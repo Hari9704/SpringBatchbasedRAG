@@ -94,8 +94,9 @@ public class BatchConfig {
                 Long documentId = Long.valueOf(documentIdValue);
                 long chunkCount = chunkRepository.countByDocumentId(documentId);
                 Object recordIdValue = jobExecution.getExecutionContext().get("jobRecordId");
+                Long recordId = toJobRecordId(recordIdValue);
 
-                if (recordIdValue instanceof Long recordId) {
+                if (recordId != null) {
                     BatchJobRecord record = jobRecordRepository.findById(recordId).orElse(null);
                     if (record != null) {
                         record.setStatus(BatchJobRecord.JobStatus.FAILED);
@@ -207,8 +208,11 @@ public class BatchConfig {
                     Long documentId = Long.valueOf(documentIdStr);
                     List<DocumentChunk> chunks = chunkRepository.findByDocumentIdAndStatus(documentId, DocumentChunk.ChunkStatus.CLEANED);
 
-                    embeddingService.embedChunks(chunks);
-                    chunkRepository.saveAll(chunks); // Save updated statuses + vector IDs
+                    try {
+                        embeddingService.embedChunks(chunks);
+                    } finally {
+                        chunkRepository.saveAll(chunks);
+                    }
 
                     return RepeatStatus.FINISHED;
                 }, txManager).build();
@@ -224,7 +228,10 @@ public class BatchConfig {
                     updateJobStepDetails(chunkContext, "Finalizing job", null);
 
                     Long documentId = Long.valueOf(documentIdStr);
-                    Long recordId = (Long) chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("jobRecordId");
+                    Long recordId = toJobRecordId(chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("jobRecordId"));
+                    if (recordId == null) {
+                        throw new IllegalStateException("jobRecordId missing from job execution context");
+                    }
                     BatchJobRecord record = jobRecordRepository.findById(recordId).orElseThrow();
 
                     int chunkCount = (int) chunkRepository.countByDocumentId(documentId);
@@ -243,7 +250,7 @@ public class BatchConfig {
     private void updateJobStepDetails(org.springframework.batch.core.scope.context.ChunkContext chunkContext,
                                       String stepName,
                                       String documentStatus) {
-        Long recordId = (Long) chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("jobRecordId");
+        Long recordId = toJobRecordId(chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("jobRecordId"));
         if (recordId != null) {
             BatchJobRecord record = jobRecordRepository.findById(recordId).orElseThrow();
             record.setStatus(BatchJobRecord.JobStatus.RUNNING);
@@ -258,5 +265,28 @@ public class BatchConfig {
                 documentSyncService.updateProcessingState(Long.valueOf(documentIdValue), documentStatus, null, null);
             }
         }
+    }
+
+    /**
+     * Job execution context values may deserialize as Long, Integer, or String depending on persistence layer.
+     */
+    private static Long toJobRecordId(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Long l) {
+            return l;
+        }
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        if (value instanceof String s && !s.isBlank()) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 }

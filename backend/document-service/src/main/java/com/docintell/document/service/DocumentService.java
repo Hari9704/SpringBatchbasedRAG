@@ -13,6 +13,7 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -32,7 +33,10 @@ public class DocumentService {
         this.documentRepository = documentRepository;
         this.uploadDir = Paths.get(storagePath);
         this.maxFileSize = maxFileSize;
-        this.allowedTypes = List.of(allowedTypes.split(","));
+        this.allowedTypes = Arrays.stream(allowedTypes.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     public Document upload(MultipartFile file, Long userId) throws IOException {

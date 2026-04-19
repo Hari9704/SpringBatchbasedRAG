@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.stream.Collectors;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -105,12 +106,16 @@ public class RagService {
             confidence = 90; // Since SimpleVectorStore distance scores are tricky, hardcode high confidence if chunks were found.
             
             sources = topChunks.stream()
-                .map(doc -> Map.of(
-                        "documentId", doc.getMetadata().get("documentId"),
-                        "chunkIndex", doc.getMetadata().get("chunkIndex"),
-                        "chunk", doc.getContent().length() > 50 ? doc.getContent().substring(0, 50) + "..." : doc.getContent(),
-                        "relevance", "High"
-                ))
+                .map(doc -> {
+                    Map<String, Object> meta = doc.getMetadata() != null ? doc.getMetadata() : Map.of();
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("documentId", meta.get("documentId"));
+                    row.put("chunkIndex", meta.get("chunkIndex"));
+                    String content = doc.getContent();
+                    row.put("chunk", content != null && content.length() > 50 ? content.substring(0, 50) + "..." : content);
+                    row.put("relevance", "High");
+                    return row;
+                })
                 .collect(Collectors.toList());
         }
 

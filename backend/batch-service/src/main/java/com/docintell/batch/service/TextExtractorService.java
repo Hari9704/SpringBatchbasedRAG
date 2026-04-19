@@ -24,9 +24,17 @@ public class TextExtractorService {
     private static final Logger log = LoggerFactory.getLogger(TextExtractorService.class);
 
     public String extract(String filePath, String fileType) throws IOException {
-        log.info("Extracting text from {} (type: {})", filePath, fileType);
+        String normalizedType = fileType;
+        if (normalizedType == null || normalizedType.isBlank()) {
+            String name = Path.of(filePath).getFileName().toString();
+            int dot = name.lastIndexOf('.');
+            normalizedType = dot >= 0 ? name.substring(dot + 1) : "TXT";
+            log.warn("Missing file type; inferred {} from path", normalizedType);
+        }
 
-        return switch (fileType.toUpperCase()) {
+        log.info("Extracting text from {} (type: {})", filePath, normalizedType);
+
+        return switch (normalizedType.toUpperCase()) {
             case "PDF" -> extractFromPdf(filePath);
             case "DOCX" -> extractFromDocx(filePath);
             case "TXT" -> extractFromTxt(filePath);

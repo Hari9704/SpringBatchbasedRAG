@@ -55,7 +55,10 @@ public class EmbeddingService {
             // Persist SimpleVectorStore to disk
             if (vectorStore instanceof SimpleVectorStore simpleStore) {
                 File file = new File(vectorStorePath);
-                file.getParentFile().mkdirs();
+                File parent = file.getParentFile();
+                if (parent != null) {
+                    parent.mkdirs();
+                }
                 simpleStore.save(file);
                 log.info("Persistent vector store saved to {}", file.getAbsolutePath());
             }
