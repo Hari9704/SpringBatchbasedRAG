@@ -31,6 +31,7 @@ export default function UserDashboard() {
   const navigate = useNavigate()
   const [queryHistory, setQueryHistory] = useState([])
   const [historyError, setHistoryError] = useState('')
+  const [displayName] = useState(() => sessionStorage.getItem('docintell-display-name') || '')
   const { documents, processedDocuments, workspaceError } = useUserWorkspace()
 
   useEffect(() => {
@@ -93,7 +94,7 @@ export default function UserDashboard() {
   return (
     <div className="animate-fade-in" id="user-dashboard">
       <div className="page-header">
-        <h1>Welcome back, Syama</h1>
+        <h1>Welcome back{displayName ? `, ${displayName}` : ''}</h1>
         <p>Here&apos;s your live document intelligence overview.</p>
       </div>
 
@@ -120,7 +121,7 @@ export default function UserDashboard() {
             <div className="stat-card" key={stat.label}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span className="stat-label">{stat.label}</span>
-                <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-md)', background: index === 0 ? 'var(--color-primary-lighter)' : index === 1 ? 'var(--color-success-bg)' : 'var(--color-warning-bg)', color: stat.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-md)', background: index === 0 ? 'var(--color-primary-lighter)' : index === 1 ? 'var(--color-ice)' : 'var(--color-warning-bg)', color: stat.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon size={20} />
                 </div>
               </div>

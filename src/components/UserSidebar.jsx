@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Upload, FolderOpen,
   MessageSquare, Brain, ThumbsUp, BarChart3,
-  Settings, LogOut
+  Settings, LogOut, User,
 } from 'lucide-react'
 
 const navItems = [
@@ -26,6 +26,7 @@ const navItems = [
     section: 'SYSTEM',
     items: [
       { to: '/app/analytics', label: 'My Analytics', icon: BarChart3 },
+      { to: '/app/profile', label: 'Profile', icon: User },
       { to: '/app/settings', label: 'Settings', icon: Settings },
     ]
   }

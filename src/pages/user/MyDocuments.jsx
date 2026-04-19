@@ -53,7 +53,7 @@ export default function MyDocuments() {
   }, [activeDocumentId, documents])
 
   const filteredDocuments = useMemo(
-    () => documents.filter((document) => document.name.toLowerCase().includes(search.toLowerCase())),
+    () => documents.filter((document) => (document.name || '').toLowerCase().includes(search.toLowerCase())),
     [documents, search],
   )
 

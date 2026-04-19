@@ -14,7 +14,10 @@ export default function Login({ onLogin }) {
     setLoading(true)
     // Simulate API call for login/register
     setTimeout(() => {
-      onLogin(role)
+      const displayName = (authMode === 'register' && fullName.trim())
+        ? fullName.trim()
+        : (email.split('@')[0] || 'User')
+      onLogin({ role, displayName })
     }, 1000)
   }
 

@@ -28,6 +28,10 @@
   --color-error-bg: #fef2f2;
   --color-info: #3b82f6;
   --color-info-bg: #eff6ff;
+  --color-deep-blue: #1e3a8a;
+  --color-royal: #2563eb;
+  --color-ice: #dbeafe;
+  --color-sapphire: #0ea5e9;
   --color-processing: #8b5cf6;
   --color-processing-bg: #f5f3ff;
 
@@ -143,7 +147,7 @@ ol {
   position: fixed;
   inset: 0 auto 0 0;
   width: var(--sidebar-width);
-  background: var(--color-bg-sidebar);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 55%, #eff6ff 100%);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -934,4 +938,51 @@ ol {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* --- User workspace: richer palette (orange, green, blue) --- */
+.user-workspace-shell {
+  background: linear-gradient(180deg, #f8fafc 0%, #f0f9ff 38%, #fffbeb 100%);
+  min-height: 100%;
+}
+
+.user-portal-hero-card {
+  background: linear-gradient(125deg, var(--color-deep-blue) 0%, var(--color-royal) 38%, var(--color-primary) 72%, var(--color-accent) 100%);
+  box-shadow: var(--shadow-lg);
+}
+
+.stat-card-accent-blue {
+  border-top: 3px solid var(--color-royal);
+  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+}
+
+.stat-card-accent-green {
+  border-top: 3px solid var(--color-accent);
+  background: linear-gradient(180deg, #ffffff 0%, #ecfdf5 100%);
+}
+
+.stat-card-accent-warm {
+  border-top: 3px solid var(--color-primary);
+  background: linear-gradient(180deg, #ffffff 0%, #fff7ed 100%);
+}
+
+.stat-card-accent-violet {
+  border-top: 3px solid var(--color-processing);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f3ff 100%);
+}
+
+.card-surface-blue {
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.06);
+}
+
+.card-surface-mint {
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  box-shadow: 0 10px 30px rgba(16, 185, 129, 0.05);
+}
+
+button.toggle-wrapper {
+  background: transparent;
+  border: none;
+  padding: 0;
 }

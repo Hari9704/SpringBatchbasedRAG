@@ -24,6 +24,7 @@ import MyDocuments from './pages/user/MyDocuments'
 import AIChat from './pages/user/AIChat'
 import UserAnalytics from './pages/user/UserAnalytics'
 import UserSettings from './pages/user/UserSettings'
+import UserPanel from './pages/UserPanel'
 
 function UserAppShell({ onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -41,7 +42,7 @@ function UserAppShell({ onLogout }) {
         aria-label="Close navigation"
         type="button"
       />
-      <main className="main-content">
+      <main className="main-content user-workspace-shell">
         <div className="mobile-topbar">
           <button
             className="mobile-menu-button"
@@ -62,6 +63,7 @@ function UserAppShell({ onLogout }) {
           <Route path="/app/feedback" element={<FeedbackLearning />} />
           <Route path="/app/analytics" element={<UserAnalytics />} />
           <Route path="/app/settings" element={<UserSettings />} />
+          <Route path="/app/profile" element={<UserPanel />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>
@@ -73,7 +75,16 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userRole, setUserRole] = useState(null)
 
-  const handleLogin = (role) => {
+  const handleLogin = (payload) => {
+    const role = typeof payload === 'string' ? payload : payload?.role
+    const displayName = typeof payload === 'object' && payload?.displayName
+      ? String(payload.displayName).trim()
+      : ''
+
+    if (displayName) {
+      sessionStorage.setItem('docintell-display-name', displayName)
+    }
+
     setIsAuthenticated(true)
     setUserRole(role)
   }
@@ -81,6 +92,7 @@ export default function App() {
   const handleLogout = () => {
     setIsAuthenticated(false)
     setUserRole(null)
+    sessionStorage.removeItem('docintell-display-name')
   }
 
   if (!isAuthenticated) {

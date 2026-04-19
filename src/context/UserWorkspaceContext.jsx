@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -48,6 +49,38 @@ function getNextSelectedDocumentId(documents, preferredId) {
   return documents[0].id;
 }
 
+/** Normalize upload API payload (partial) into the same shape as GET /api/documents rows. */
+function documentFromUploadResponse(payload, userId = DEFAULT_USER_ID) {
+  if (!payload || payload.id == null) {
+    return null;
+  }
+
+  return {
+    id: Number(payload.id),
+    userId: payload.userId != null ? Number(payload.userId) : userId,
+    name: payload.name || 'Untitled',
+    type: payload.type || 'FILE',
+    sizeBytes: payload.sizeBytes != null ? Number(payload.sizeBytes) : 0,
+    status: payload.status || 'UPLOADED',
+    chunks: payload.chunks != null ? Number(payload.chunks) : 0,
+    storagePath: payload.storagePath,
+    contentHash: payload.contentHash,
+    uploadDate: payload.uploadDate || new Date().toISOString(),
+    processedDate: payload.processedDate ?? null,
+    version: payload.version ?? 1,
+    rawContent: payload.rawContent,
+  };
+}
+
+function mergeDocumentList(previous, incoming) {
+  if (!incoming) {
+    return previous;
+  }
+
+  const without = previous.filter((document) => document.id !== incoming.id);
+  return [incoming, ...without];
+}
+
 function getLatestJobsByDocumentId(jobs) {
   return jobs.reduce((accumulator, job) => {
     const current = accumulator[job.documentId];
@@ -74,6 +107,11 @@ export function UserWorkspaceProvider({ children }) {
   const [selectedDocumentId, setSelectedDocumentId] = useState(() => getStoredDocumentId());
   const [loading, setLoading] = useState(true);
   const [workspaceError, setWorkspaceError] = useState('');
+  const selectedDocumentIdRef = useRef(selectedDocumentId);
+
+  useEffect(() => {
+    selectedDocumentIdRef.current = selectedDocumentId;
+  }, [selectedDocumentId]);
 
   const persistSelectedDocument = useCallback((documentId) => {
     setSelectedDocumentId(documentId);
@@ -101,8 +139,9 @@ export function UserWorkspaceProvider({ children }) {
       setJobs(nextJobs);
       setWorkspaceError('');
 
-      const nextSelectedDocumentId = getNextSelectedDocumentId(nextDocuments, selectedDocumentId);
-      if (nextSelectedDocumentId !== selectedDocumentId) {
+      const currentSelection = selectedDocumentIdRef.current;
+      const nextSelectedDocumentId = getNextSelectedDocumentId(nextDocuments, currentSelection);
+      if (nextSelectedDocumentId !== currentSelection) {
         persistSelectedDocument(nextSelectedDocumentId);
       }
     } catch (error) {
@@ -112,7 +151,7 @@ export function UserWorkspaceProvider({ children }) {
         setLoading(false);
       }
     }
-  }, [persistSelectedDocument, selectedDocumentId]);
+  }, [persistSelectedDocument]);
 
   useEffect(() => {
     refreshWorkspace();
@@ -153,8 +192,20 @@ export function UserWorkspaceProvider({ children }) {
 
     for (const file of files) {
       try {
-        const uploadedDocument = await uploadDocument(file, DEFAULT_USER_ID);
-        await triggerBatch(uploadedDocument.id);
+        const raw = await uploadDocument(file, DEFAULT_USER_ID);
+        const normalized = documentFromUploadResponse(raw, DEFAULT_USER_ID);
+        if (normalized) {
+          setDocuments((previous) => mergeDocumentList(previous, normalized));
+        }
+
+        try {
+          await triggerBatch(Number(raw.id));
+        } catch (batchError) {
+          errors.push(
+            `${file.name}: Uploaded, but processing could not start (${batchError.message || 'batch error'}). Use Reprocess in My Documents.`,
+          );
+        }
+
         successCount += 1;
       } catch (error) {
         errors.push(`${file.name}: ${error.message}`);

@@ -1,126 +1,259 @@
-import { useState } from 'react'
-import { Settings, Play, RotateCcw, Database, FileText, AlertTriangle, Sliders, CheckCircle, Clock, XCircle, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Settings, Play, RotateCcw, Database, FileText, Sliders, RefreshCw } from 'lucide-react'
+import { fetchAllDocumentsAdmin, fetchBatchJobs } from '../lib/api'
 
-const batchJobs = [
-  { id: 'JOB-347', name: 'Q3 Report Processing', status: 'completed', started: '13:02', duration: '4.2s', steps: '6/6' },
-  { id: 'JOB-346', name: 'Compliance Doc Reindex', status: 'running', started: '12:58', duration: '2.1s', steps: '4/6' },
-  { id: 'JOB-345', name: 'Vendor Contract Batch', status: 'completed', started: '12:45', duration: '8.7s', steps: '6/6' },
-  { id: 'JOB-344', name: 'SLA Embedding Update', status: 'failed', started: '12:30', duration: '1.3s', steps: '2/6', error: 'Vector DB connection timeout' },
-  { id: 'JOB-343', name: 'Board Minutes Processing', status: 'completed', started: '12:15', duration: '3.1s', steps: '6/6' },
-]
+const CONFIG_KEY = 'docintell-admin-config-v1'
 
-const embeddingStats = [
-  { label: 'Total Vectors', value: '24,891' },
-  { label: 'Documents Indexed', value: '1,284' },
-  { label: 'Avg. Chunk Size', value: '196 words' },
-  { label: 'Embedding Model', value: 'text-embedding-3-small' },
-  { label: 'Vector Dimensions', value: '1536' },
-  { label: 'Last Reindex', value: '2 hrs ago' },
-]
+function mapJobStatus(status) {
+  if (status === 'COMPLETED') {
+    return 'completed'
+  }
 
-const apiLogs = [
-  { time: '13:05:22', method: 'POST', endpoint: '/api/query', status: 200, duration: '1.4s' },
-  { time: '13:05:18', method: 'GET', endpoint: '/api/documents', status: 200, duration: '0.2s' },
-  { time: '13:04:55', method: 'POST', endpoint: '/api/batch/trigger', status: 201, duration: '0.3s' },
-  { time: '13:04:30', method: 'POST', endpoint: '/api/feedback', status: 200, duration: '0.1s' },
-  { time: '13:03:12', method: 'GET', endpoint: '/api/analytics', status: 200, duration: '0.5s' },
-  { time: '13:02:45', method: 'POST', endpoint: '/api/auth/login', status: 200, duration: '0.4s' },
-  { time: '13:01:18', method: 'POST', endpoint: '/api/query', status: 500, duration: '2.1s' },
-]
+  if (status === 'FAILED') {
+    return 'failed'
+  }
+
+  return 'running'
+}
+
+function formatDuration(startTime, endTime) {
+  if (!startTime) {
+    return '--'
+  }
+
+  const start = new Date(startTime).getTime()
+  const end = endTime ? new Date(endTime).getTime() : Date.now()
+  if (Number.isNaN(start)) {
+    return '--'
+  }
+
+  const seconds = Math.max(0, Math.round((end - start) / 1000))
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+
+  return `${(seconds / 60).toFixed(1)}m`
+}
 
 export default function AdminPanel() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('batch')
   const [chunkSize, setChunkSize] = useState(200)
   const [threshold, setThreshold] = useState(78)
-  const [selectedModel, setSelectedModel] = useState('gpt-4o')
+  const [selectedModel, setSelectedModel] = useState('gemini-pro')
+  const [jobs, setJobs] = useState([])
+  const [jobsError, setJobsError] = useState('')
+  const [jobsLoading, setJobsLoading] = useState(false)
+  const [embeddingMeta, setEmbeddingMeta] = useState({ documents: 0, chunks: 0, processed: 0 })
+  const [configMessage, setConfigMessage] = useState('')
+
+  const loadJobs = useCallback(async () => {
+    setJobsLoading(true)
+    setJobsError('')
+
+    try {
+      const data = await fetchBatchJobs()
+      setJobs(Array.isArray(data) ? data : [])
+    } catch (error) {
+      setJobsError(error.message || 'Unable to load batch jobs.')
+    } finally {
+      setJobsLoading(false)
+    }
+  }, [])
+
+  const loadEmbeddingMeta = useCallback(async () => {
+    try {
+      const docs = await fetchAllDocumentsAdmin()
+      if (!Array.isArray(docs)) {
+        return
+      }
+
+      const chunks = docs.reduce((sum, document) => sum + (Number(document.chunks) || 0), 0)
+      const processed = docs.filter((document) => document.status === 'PROCESSED').length
+      setEmbeddingMeta({ documents: docs.length, chunks, processed })
+    } catch {
+      setEmbeddingMeta({ documents: 0, chunks: 0, processed: 0 })
+    }
+  }, [])
+
+  useEffect(() => {
+    loadJobs()
+  }, [loadJobs])
+
+  useEffect(() => {
+    if (activeTab === 'embedding') {
+      loadEmbeddingMeta()
+    }
+  }, [activeTab, loadEmbeddingMeta])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CONFIG_KEY)
+      if (!raw) {
+        return
+      }
+
+      const parsed = JSON.parse(raw)
+      if (parsed.chunkSize) {
+        setChunkSize(parsed.chunkSize)
+      }
+
+      if (parsed.threshold) {
+        setThreshold(parsed.threshold)
+      }
+
+      if (parsed.selectedModel) {
+        setSelectedModel(parsed.selectedModel)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const mappedJobs = useMemo(() => (
+    jobs.map((job) => ({
+      id: `JOB-${job.id}`,
+      rawId: job.id,
+      name: job.documentName || `Document #${job.documentId}`,
+      status: mapJobStatus(job.status),
+      started: job.startTime ? new Date(job.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--',
+      duration: formatDuration(job.startTime, job.endTime),
+      steps: `${job.completedSteps}/${job.totalSteps}`,
+      error: job.errorMessage,
+    }))
+  ), [jobs])
+
+  const embeddingStats = useMemo(() => ([
+    { label: 'Documents (all users)', value: String(embeddingMeta.documents) },
+    { label: 'Processed documents', value: String(embeddingMeta.processed) },
+    { label: 'Total chunk count (sum)', value: String(embeddingMeta.chunks) },
+    { label: 'Embedding stack', value: 'Spring AI + Gemini' },
+    { label: 'Vector store', value: 'SimpleVectorStore (file)' },
+    { label: 'Last refresh', value: new Date().toLocaleTimeString() },
+  ]), [embeddingMeta])
+
+  const handleSaveConfig = () => {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify({ chunkSize, threshold, selectedModel }))
+    setConfigMessage('Saved locally in this browser (demo). Wire to backend config when ready.')
+    window.setTimeout(() => setConfigMessage(''), 4000)
+  }
 
   const tabs = [
-    { id: 'batch', label: '🔹 Batch Management', icon: Play },
-    { id: 'embedding', label: '🔹 Embedding Control', icon: Database },
-    { id: 'logs', label: '🔹 Logs & Monitoring', icon: FileText },
-    { id: 'config', label: '🔹 Config Management', icon: Sliders },
+    { id: 'batch', label: 'Batch management', icon: Play },
+    { id: 'embedding', label: 'Embedding control', icon: Database },
+    { id: 'logs', label: 'Logs & monitoring', icon: FileText },
+    { id: 'config', label: 'Config', icon: Sliders },
   ]
 
   return (
     <div className="animate-fade-in" id="admin-page">
       <div className="page-header">
         <h1>Admin Panel</h1>
-        <p>Control system behavior and monitor operations</p>
+        <p>Monitor Spring Batch and tune demo settings.</p>
       </div>
 
       <div className="tabs">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            className={`tab ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              className={`tab ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              type="button"
+            >
+              <Icon size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
 
-      {/* Batch Management */}
       {activeTab === 'batch' && (
         <div className="animate-fade-in">
-          <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--spacing-lg)' }}>
-            <button className="btn btn-primary"><Play size={16} /> Trigger New Job</button>
-            <button className="btn btn-secondary"><RefreshCw size={16} /> Refresh</button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--spacing-lg)', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn btn-primary" type="button" onClick={() => navigate('/admin/documents')}>
+              <Play size={16} /> Pick document to process
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={() => loadJobs()} disabled={jobsLoading}>
+              <RefreshCw size={16} className={jobsLoading ? 'spin' : ''} /> Refresh jobs
+            </button>
+            {jobsError ? <span className="inline-muted" style={{ color: 'var(--color-error)' }}>{jobsError}</span> : null}
           </div>
           <div className="card">
-            <div className="card-title">Spring Batch — Job History</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Job ID</th>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Started</th>
-                  <th>Duration</th>
-                  <th>Steps</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {batchJobs.map(job => (
-                  <tr key={job.id}>
-                    <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{job.id}</td>
-                    <td>{job.name}</td>
-                    <td>
-                      <span className={`badge ${job.status === 'completed' ? 'badge-success' : job.status === 'running' ? 'badge-processing' : 'badge-error'}`}>
-                        <span className="badge-dot"></span>
-                        {job.status}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{job.started}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>{job.duration}</td>
-                    <td>{job.steps}</td>
-                    <td>
-                      {job.status === 'failed' && (
-                        <button className="btn btn-sm btn-secondary">
-                          <RotateCcw size={12} /> Retry
-                        </button>
-                      )}
-                    </td>
+            <div className="card-title">Spring Batch — job history</div>
+            {mappedJobs.length === 0 && !jobsError ? (
+              <div className="empty-state compact">
+                <FileText size={28} />
+                <div>No batch job records yet. Trigger processing from the user upload flow or document explorer.</div>
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Job ID</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                    <th>Steps</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {mappedJobs.map((job) => (
+                    <tr key={job.id}>
+                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{job.id}</td>
+                      <td>{job.name}</td>
+                      <td>
+                        <span className={`badge ${job.status === 'completed' ? 'badge-success' : job.status === 'running' ? 'badge-processing' : 'badge-error'}`}>
+                          <span className="badge-dot"></span>
+                          {job.status}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{job.started}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>{job.duration}</td>
+                      <td>{job.steps}</td>
+                      <td>
+                        {job.status === 'failed' ? (
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            type="button"
+                            onClick={() => window.alert(job.error || 'See batch-service logs. Re-upload or reprocess from the user workspace.')}
+                          >
+                            <RotateCcw size={12} /> Details
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
 
-      {/* Embedding Control */}
       {activeTab === 'embedding' && (
         <div className="animate-fade-in">
-          <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--spacing-lg)' }}>
-            <button className="btn btn-primary"><Database size={16} /> Re-index All Documents</button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => {
+                loadEmbeddingMeta()
+                window.alert('Refreshed counts from /api/documents/all. Full re-index is driven per document via batch jobs.')
+              }}
+            >
+              <Database size={16} /> Refresh embedding stats
+            </button>
           </div>
           <div className="card">
-            <div className="card-title">Embedding Statistics</div>
+            <div className="card-title">Embedding statistics (live)</div>
             <div className="stats-grid">
-              {embeddingStats.map((stat, idx) => (
-                <div key={idx} style={{ padding: '12px 16px', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
+              {embeddingStats.map((stat) => (
+                <div key={stat.label} style={{ padding: '12px 16px', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: 4 }}>{stat.label}</div>
                   <div style={{ fontSize: '1.125rem', fontWeight: 700 }}>{stat.value}</div>
                 </div>
@@ -130,104 +263,65 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* Logs */}
       {activeTab === 'logs' && (
         <div className="animate-fade-in">
           <div className="card">
-            <div className="card-title">API Logs — Real-time</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Method</th>
-                  <th>Endpoint</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {apiLogs.map((log, idx) => (
-                  <tr key={idx}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>{log.time}</td>
-                    <td>
-                      <span style={{
-                        fontFamily: 'monospace', fontWeight: 600, fontSize: '0.75rem',
-                        padding: '2px 6px', borderRadius: 4,
-                        background: log.method === 'POST' ? 'var(--color-info-bg)' : 'var(--color-success-bg)',
-                        color: log.method === 'POST' ? 'var(--color-info)' : 'var(--color-success)'
-                      }}>
-                        {log.method}
-                      </span>
-                    </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>{log.endpoint}</td>
-                    <td>
-                      <span className={`badge ${log.status < 400 ? 'badge-success' : 'badge-error'}`}>
-                        {log.status}
-                      </span>
-                    </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8125rem' }}>{log.duration}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="card-title">API logs</div>
+            <p className="inline-muted" style={{ marginBottom: 'var(--spacing-md)' }}>
+              Central request logging is not enabled in this demo. Use Spring Boot logs on each service, or add a gateway access log.
+            </p>
+            <button className="btn btn-secondary btn-sm" type="button" onClick={() => navigate('/admin/tests')}>
+              Open test checklist
+            </button>
           </div>
         </div>
       )}
 
-      {/* Config */}
       {activeTab === 'config' && (
         <div className="animate-fade-in">
           <div className="card" style={{ maxWidth: 600 }}>
-            <div className="card-title">System Configuration</div>
-            
+            <div className="card-title">System configuration (local demo)</div>
+            {configMessage ? <div className="status-card success" style={{ marginBottom: 'var(--spacing-md)' }}>{configMessage}</div> : null}
+
             <div className="form-group">
-              <label className="form-label">LLM Model Selection</label>
+              <label className="form-label">Preferred model label</label>
               <select
                 className="form-input"
                 value={selectedModel}
-                onChange={e => setSelectedModel(e.target.value)}
+                onChange={(e) => setSelectedModel(e.target.value)}
               >
-                <option value="gpt-4o">GPT-4o (OpenAI)</option>
-                <option value="gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
-                <option value="claude-3.5">Claude 3.5 Sonnet (Anthropic)</option>
-                <option value="gemini-pro">Gemini Pro (Google)</option>
+                <option value="gemini-pro">Gemini (Google)</option>
+                <option value="gpt-4o">GPT-4o (placeholder)</option>
+                <option value="claude-3.5">Claude 3.5 (placeholder)</option>
               </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Chunk Size: {chunkSize} words</label>
+              <label className="form-label">UI chunk size hint: {chunkSize}</label>
               <input
                 type="range"
                 min={50}
                 max={500}
                 value={chunkSize}
-                onChange={e => setChunkSize(Number(e.target.value))}
+                onChange={(e) => setChunkSize(Number(e.target.value))}
                 style={{ width: '100%', accentColor: 'var(--color-primary)' }}
               />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
-                <span>50</span>
-                <span>500</span>
-              </div>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Similarity Threshold: {threshold}%</label>
+              <label className="form-label">UI similarity hint: {threshold}%</label>
               <input
                 type="range"
                 min={50}
                 max={99}
                 value={threshold}
-                onChange={e => setThreshold(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--color-primary)' }}
+                onChange={(e) => setThreshold(Number(e.target.value))}
+                style={{ width: '100%', accentColor: 'var(--color-royal)' }}
               />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
-                <span>50%</span>
-                <span>99%</span>
-              </div>
             </div>
 
-            <button className="btn btn-primary" style={{ marginTop: 'var(--spacing-md)' }}>
-              <Settings size={16} /> Save Configuration
+            <button className="btn btn-primary" style={{ marginTop: 'var(--spacing-md)' }} type="button" onClick={handleSaveConfig}>
+              <Settings size={16} /> Save configuration
             </button>
           </div>
         </div>

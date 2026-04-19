@@ -76,3 +76,15 @@ export function fetchQueryHistory(userId = DEFAULT_USER_ID) {
 export function fetchQueryStats(userId = DEFAULT_USER_ID) {
   return request(`/api/query/stats/${userId}`);
 }
+
+export function fetchDocumentStats(userId = DEFAULT_USER_ID) {
+  return request(`/api/documents/stats?userId=${userId}`);
+}
+
+export function fetchFeedback() {
+  return request('/api/feedback');
+}
+
+export function fetchAllDocumentsAdmin() {
+  return request('/api/documents/all');
+}
