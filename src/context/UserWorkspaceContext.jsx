@@ -24,26 +24,30 @@ const UserWorkspaceContext = createContext(null);
 
 function getStoredDocumentId() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  return stored ? Number(stored) : null;
+  if (!stored) {
+    return null;
+  }
+
+  const parsed = Number(stored);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * Keep the user's current selection when that document still exists.
+ * (Previous logic always preferred the first PROCESSED doc, which stole focus from a newly uploaded file.)
+ */
 function getNextSelectedDocumentId(documents, preferredId) {
   if (!documents.length) {
     return null;
   }
 
-  const processedDocuments = documents.filter((document) => document.status === 'PROCESSED');
-
-  if (processedDocuments.some((document) => document.id === preferredId)) {
+  if (preferredId != null && documents.some((document) => document.id === preferredId)) {
     return preferredId;
   }
 
+  const processedDocuments = documents.filter((document) => document.status === 'PROCESSED');
   if (processedDocuments.length > 0) {
     return processedDocuments[0].id;
-  }
-
-  if (documents.some((document) => document.id === preferredId)) {
-    return preferredId;
   }
 
   return documents[0].id;
@@ -83,10 +87,15 @@ function mergeDocumentList(previous, incoming) {
 
 function getLatestJobsByDocumentId(jobs) {
   return jobs.reduce((accumulator, job) => {
-    const current = accumulator[job.documentId];
+    const documentId = job?.documentId;
+    if (documentId == null) {
+      return accumulator;
+    }
+
+    const current = accumulator[documentId];
 
     if (!current) {
-      accumulator[job.documentId] = job;
+      accumulator[documentId] = job;
       return accumulator;
     }
 
@@ -94,7 +103,7 @@ function getLatestJobsByDocumentId(jobs) {
     const currentStartedAt = new Date(current.startTime || 0).getTime();
 
     if (nextStartedAt >= currentStartedAt) {
-      accumulator[job.documentId] = job;
+      accumulator[documentId] = job;
     }
 
     return accumulator;
@@ -129,27 +138,56 @@ export function UserWorkspaceProvider({ children }) {
       setLoading(true);
     }
 
+    let nextDocuments = null;
+    let nextJobs = null;
+    const errors = [];
+
     try {
-      const [nextDocuments, nextJobs] = await Promise.all([
-        fetchDocuments(DEFAULT_USER_ID),
-        fetchBatchJobs(),
-      ]);
-
-      setDocuments(nextDocuments);
-      setJobs(nextJobs);
-      setWorkspaceError('');
-
-      const currentSelection = selectedDocumentIdRef.current;
-      const nextSelectedDocumentId = getNextSelectedDocumentId(nextDocuments, currentSelection);
-      if (nextSelectedDocumentId !== currentSelection) {
-        persistSelectedDocument(nextSelectedDocumentId);
-      }
+      nextDocuments = await fetchDocuments(DEFAULT_USER_ID);
     } catch (error) {
-      setWorkspaceError(error.message || 'Unable to load your workspace right now.');
-    } finally {
+      errors.push(error.message || 'Could not load documents');
+    }
+
+    try {
+      nextJobs = await fetchBatchJobs();
+    } catch (error) {
+      errors.push(error.message || 'Could not load batch jobs');
+    }
+
+    if (Array.isArray(nextDocuments)) {
+      setDocuments(nextDocuments);
+    } else if (!silent) {
+      setDocuments([]);
+    }
+
+    if (Array.isArray(nextJobs)) {
+      setJobs(nextJobs);
+    } else if (!silent) {
+      setJobs([]);
+    }
+
+    if (errors.length) {
       if (!silent) {
-        setLoading(false);
+        setWorkspaceError([...new Set(errors)].join(' · '));
       }
+    } else {
+      setWorkspaceError('');
+    }
+
+    if (Array.isArray(nextDocuments)) {
+      if (!nextDocuments.length) {
+        persistSelectedDocument(null);
+      } else {
+        const currentSelection = selectedDocumentIdRef.current;
+        const nextSelectedDocumentId = getNextSelectedDocumentId(nextDocuments, currentSelection);
+        if (nextSelectedDocumentId !== currentSelection) {
+          persistSelectedDocument(nextSelectedDocumentId);
+        }
+      }
+    }
+
+    if (!silent) {
+      setLoading(false);
     }
   }, [persistSelectedDocument]);
 
@@ -174,6 +212,15 @@ export function UserWorkspaceProvider({ children }) {
     return () => window.clearInterval(intervalId);
   }, [hasActiveProcessing, refreshWorkspace]);
 
+  useEffect(() => {
+    const onFocus = () => {
+      refreshWorkspace({ silent: true });
+    };
+
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshWorkspace]);
+
   const processedDocuments = useMemo(
     () => documents.filter((document) => document.status === 'PROCESSED'),
     [documents],
@@ -196,10 +243,11 @@ export function UserWorkspaceProvider({ children }) {
         const normalized = documentFromUploadResponse(raw, DEFAULT_USER_ID);
         if (normalized) {
           setDocuments((previous) => mergeDocumentList(previous, normalized));
+          persistSelectedDocument(normalized.id);
         }
 
         try {
-          await triggerBatch(Number(raw.id));
+          await triggerBatch(Number(raw?.id));
         } catch (batchError) {
           errors.push(
             `${file.name}: Uploaded, but processing could not start (${batchError.message || 'batch error'}). Use Reprocess in My Documents.`,
@@ -215,7 +263,7 @@ export function UserWorkspaceProvider({ children }) {
     await refreshWorkspace({ silent: true });
 
     return { successCount, errors };
-  }, [refreshWorkspace]);
+  }, [persistSelectedDocument, refreshWorkspace]);
 
   const reprocessDocument = useCallback(async (documentId) => {
     await triggerBatch(documentId);

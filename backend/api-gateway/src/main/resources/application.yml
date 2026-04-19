@@ -11,29 +11,33 @@ spring:
           uri: ${DOCINTELL_SVC_AUTH:http://localhost:8081}
           predicates:
             - Path=/api/auth/**
+        # Path "/api/foo/**" does NOT match exact "/api/foo" (Spring 6 PathPattern). Include both.
         - id: document-service
           uri: ${DOCINTELL_SVC_DOCUMENT:http://localhost:8082}
           predicates:
-            - Path=/api/documents/**
+            - Path=/api/documents,/api/documents/**
         - id: batch-service
           uri: ${DOCINTELL_SVC_BATCH:http://localhost:8083}
           predicates:
-            - Path=/api/batch/**
+            - Path=/api/batch,/api/batch/**
         - id: query-service
           uri: ${DOCINTELL_SVC_QUERY:http://localhost:8085}
           predicates:
-            - Path=/api/query/**
+            - Path=/api/query,/api/query/**
         - id: feedback-service
           uri: ${DOCINTELL_SVC_FEEDBACK:http://localhost:8086}
           predicates:
-            - Path=/api/feedback/**
+            - Path=/api/feedback,/api/feedback/**
         - id: analytics-service
           uri: ${DOCINTELL_SVC_ANALYTICS:http://localhost:8087}
           predicates:
-            - Path=/api/analytics/**
+            - Path=/api/analytics,/api/analytics/**
       globalcors:
         corsConfigurations:
           '[/**]':
-            allowedOriginPatterns: ${DOCINTELL_GATEWAY_CORS_PATTERN:http://localhost:5173}
+            # List binding (required); Docker overrides via profile `docker` + application-docker.yml.
+            allowedOriginPatterns:
+              - "http://localhost:*"
+              - "http://127.0.0.1:*"
             allowedMethods: "*"
             allowedHeaders: "*"

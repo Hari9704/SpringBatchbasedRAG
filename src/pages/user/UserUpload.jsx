@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Upload, FileText, CheckCircle, Loader, AlertCircle, ArrowRight } from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
 
+const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
+
 const PIPELINE_STEPS = [
   {
     key: 'VALIDATING',
@@ -51,7 +53,11 @@ function formatBytes(sizeBytes) {
 }
 
 function formatStatus(status) {
-  return status.toLowerCase().replace(/_/g, ' ')
+  if (!status) {
+    return 'unknown'
+  }
+
+  return String(status).toLowerCase().replace(/_/g, ' ')
 }
 
 function getStepState(stepKey, documentStatus) {
@@ -92,12 +98,23 @@ export default function UserUpload() {
     processedDocuments,
     uploadFiles,
     workspaceError,
+    loading,
+    refreshWorkspace,
   } = useUserWorkspace()
 
-  const activeDocument = useMemo(
-    () => documents.find((document) => document.status !== 'PROCESSED') || documents[0] || null,
-    [documents],
-  )
+  const activeDocument = useMemo(() => {
+    const inFlight = documents.filter((document) => PROCESSING_STATUSES.has(document.status))
+    if (inFlight.length) {
+      return inFlight[0]
+    }
+
+    const failed = documents.find((document) => document.status === 'FAILED')
+    if (failed) {
+      return failed
+    }
+
+    return documents[0] || null
+  }, [documents])
 
   const activeJob = activeDocument ? latestJobsByDocumentId[activeDocument.id] : null
 
@@ -148,6 +165,13 @@ export default function UserUpload() {
         <p>Upload your documents to enable AI-powered queries.</p>
       </div>
 
+      {loading && !documents.length ? (
+        <div className="card empty-state" style={{ marginBottom: 'var(--spacing-lg)' }}>
+          <Loader size={28} className="spin" />
+          <div>Loading your documents…</div>
+        </div>
+      ) : null}
+
       {(workspaceError || pageError || notice) && (
         <div className={`card ${workspaceError || pageError ? 'status-card error' : 'status-card success'}`} style={{ marginBottom: 'var(--spacing-lg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -195,7 +219,13 @@ export default function UserUpload() {
 
       <div className="grid-2">
         <div className="card">
-          <div className="card-title">Recent Documents</div>
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <span>Recent Documents</span>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={() => refreshWorkspace({ silent: true })} disabled={loading}>
+              {loading ? <Loader size={14} className="spin" /> : null}
+              Refresh
+            </button>
+          </div>
           {documents.length === 0 ? (
             <div className="empty-state compact">
               <FileText size={28} />

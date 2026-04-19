@@ -1,0 +1,12 @@
+# Used when api-gateway runs in Docker (see deploy/docker-compose.yml).
+# Browser origin is the public site origin; allow all patterns for single-host demo.
+spring:
+  cloud:
+    gateway:
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOriginPatterns:
+              - "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"

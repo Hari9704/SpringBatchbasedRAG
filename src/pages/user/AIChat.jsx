@@ -7,7 +7,11 @@ import { DEFAULT_USER_ID, runQuery } from '../../lib/api'
 const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
 
 function formatStatus(status) {
-  return status.toLowerCase().replace(/_/g, ' ')
+  if (!status) {
+    return 'unknown'
+  }
+
+  return String(status).toLowerCase().replace(/_/g, ' ')
 }
 
 function getMessageKey(message, index) {
@@ -30,6 +34,7 @@ export default function AIChat() {
     latestJobsByDocumentId,
     loading,
     workspaceError,
+    refreshWorkspace,
   } = useUserWorkspace()
 
   const currentDocument = useMemo(() => {
@@ -40,7 +45,9 @@ export default function AIChat() {
     return processedDocuments[0] || null
   }, [processedDocuments, selectedDocument])
 
-  const pendingDocuments = documents.filter((document) => PROCESSING_STATUSES.has(document.status))
+  const pendingDocuments = documents.filter(
+    (document) => PROCESSING_STATUSES.has(document.status) || document.status === 'FAILED',
+  )
 
   useEffect(() => {
     setMessages([])
@@ -118,6 +125,21 @@ export default function AIChat() {
           <h1>AI Chat</h1>
           <p>Chat with your documents using RAG-powered AI.</p>
         </div>
+        {workspaceError ? (
+          <div className="status-card error" style={{ marginBottom: 'var(--spacing-lg)' }}>
+            <AlertCircle size={18} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600 }}>Could not reach the API</div>
+              <div className="inline-muted" style={{ marginTop: 4 }}>{workspaceError}</div>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary btn-sm" type="button" onClick={() => refreshWorkspace({ silent: false })}>
+                  Retry
+                </button>
+                <span className="inline-muted" style={{ fontSize: 'var(--font-size-sm)' }}>Ensure the API gateway is running on port 8080.</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="card empty-state">
           <Upload size={36} />
           <h2>Upload a document first</h2>
@@ -149,16 +171,27 @@ export default function AIChat() {
 
         <div className="card">
           <div className="card-title">Documents still processing</div>
+          {pendingDocuments.length === 0 ? (
+            <div className="empty-state compact">
+              <FileText size={28} />
+              <div>No in-flight jobs detected. Open Upload & Process or pull to refresh.</div>
+              <button className="btn btn-sm btn-secondary" type="button" style={{ marginTop: 12 }} onClick={() => refreshWorkspace({ silent: true })}>
+                Refresh status
+              </button>
+            </div>
+          ) : null}
           {pendingDocuments.map((document) => {
             const job = latestJobsByDocumentId[document.id]
+            const failed = document.status === 'FAILED'
             return (
               <div key={document.id} className="list-row">
                 <div>
                   <div style={{ fontWeight: 600 }}>{document.name}</div>
                   <div className="inline-muted">{job?.currentStep || formatStatus(document.status)}</div>
                 </div>
-                <span className="badge badge-processing">
-                  <Loader size={12} className="spin" /> {formatStatus(document.status)}
+                <span className={`badge ${failed ? 'badge-error' : 'badge-processing'}`}>
+                  {failed ? <AlertCircle size={12} /> : <Loader size={12} className="spin" />}
+                  {formatStatus(document.status)}
                 </span>
               </div>
             )

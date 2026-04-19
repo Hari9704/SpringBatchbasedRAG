@@ -96,13 +96,13 @@ services:
       args:
         SERVICE: api-gateway
     environment:
+      SPRING_PROFILES_ACTIVE: docker
       DOCINTELL_SVC_AUTH: http://auth-service:8081
       DOCINTELL_SVC_DOCUMENT: http://document-service:8082
       DOCINTELL_SVC_BATCH: http://batch-service:8083
       DOCINTELL_SVC_QUERY: http://query-service:8085
       DOCINTELL_SVC_FEEDBACK: http://feedback-service:8086
       DOCINTELL_SVC_ANALYTICS: http://analytics-service:8087
-      DOCINTELL_GATEWAY_CORS_PATTERN: "*"
     ports:
       - "8080:8080"
     depends_on:

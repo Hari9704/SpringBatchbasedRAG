@@ -23,7 +23,18 @@ async function request(path, options = {}) {
     : await response.text().catch(() => '');
 
   if (!response.ok) {
-    const message = payload?.error || payload?.message || payload || `Request failed (${response.status})`;
+    let message = `Request failed (${response.status})`;
+    if (payload && typeof payload === 'object') {
+      message =
+        payload.error
+        || payload.message
+        || payload.detail
+        || (Array.isArray(payload.errors) ? payload.errors.map((e) => e?.message || e).join('; ') : null)
+        || message;
+    } else if (typeof payload === 'string' && payload.trim()) {
+      message = payload.trim();
+    }
+
     throw new Error(message);
   }
 
@@ -31,11 +42,11 @@ async function request(path, options = {}) {
 }
 
 export function fetchDocuments(userId = DEFAULT_USER_ID) {
-  return request(`/api/documents?userId=${userId}`);
+  return request(`/api/documents?userId=${userId}`).then((data) => (Array.isArray(data) ? data : []));
 }
 
 export function fetchBatchJobs() {
-  return request('/api/batch/jobs');
+  return request('/api/batch/jobs').then((data) => (Array.isArray(data) ? data : []));
 }
 
 export function uploadDocument(file, userId = DEFAULT_USER_ID) {
@@ -70,7 +81,7 @@ export function runQuery(payload) {
 }
 
 export function fetchQueryHistory(userId = DEFAULT_USER_ID) {
-  return request(`/api/query/history/${userId}`);
+  return request(`/api/query/history/${userId}`).then((data) => (Array.isArray(data) ? data : []));
 }
 
 export function fetchQueryStats(userId = DEFAULT_USER_ID) {
@@ -82,9 +93,9 @@ export function fetchDocumentStats(userId = DEFAULT_USER_ID) {
 }
 
 export function fetchFeedback() {
-  return request('/api/feedback');
+  return request('/api/feedback').then((data) => (Array.isArray(data) ? data : []));
 }
 
 export function fetchAllDocumentsAdmin() {
-  return request('/api/documents/all');
+  return request('/api/documents/all').then((data) => (Array.isArray(data) ? data : []));
 }

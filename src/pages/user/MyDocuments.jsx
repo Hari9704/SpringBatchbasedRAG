@@ -15,7 +15,11 @@ function formatBytes(sizeBytes) {
 }
 
 function formatStatus(status) {
-  return status.toLowerCase().replace(/_/g, ' ')
+  if (!status) {
+    return 'unknown'
+  }
+
+  return String(status).toLowerCase().replace(/_/g, ' ')
 }
 
 function formatTimestamp(dateText) {
@@ -39,6 +43,8 @@ export default function MyDocuments() {
     reprocessDocument,
     removeDocument,
     workspaceError,
+    loading,
+    refreshWorkspace,
   } = useUserWorkspace()
 
   useEffect(() => {
@@ -117,8 +123,8 @@ export default function MyDocuments() {
         </div>
       ) : null}
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 'var(--spacing-xl)', alignItems: 'center' }}>
-        <div className="input-with-icon" style={{ flex: 1 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 'var(--spacing-xl)', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="input-with-icon" style={{ flex: 1, minWidth: 200 }}>
           <Search size={18} className="input-icon" />
           <input
             className="form-input"
@@ -127,6 +133,10 @@ export default function MyDocuments() {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => refreshWorkspace({ silent: true })} disabled={loading}>
+          {loading ? <Loader size={14} className="spin" /> : null}
+          Refresh
+        </button>
         <div className="inline-muted" style={{ whiteSpace: 'nowrap' }}>
           <FileText size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} />
           {documents.filter((document) => document.status === 'PROCESSED').length} ready · {documents.filter((document) => PROCESSING_STATUSES.has(document.status)).length} processing
@@ -135,14 +145,25 @@ export default function MyDocuments() {
 
       <div className="document-layout">
         <div style={{ flex: 1 }}>
-          {filteredDocuments.length === 0 ? (
+          {loading && !documents.length ? (
+            <div className="card">
+              <div className="empty-state compact">
+                <Loader size={28} className="spin" />
+                <div>Loading documents…</div>
+              </div>
+            </div>
+          ) : null}
+
+          {!loading && filteredDocuments.length === 0 ? (
             <div className="card">
               <div className="empty-state compact">
                 <FileText size={28} />
-                <div>No documents match your search yet.</div>
+                <div>{documents.length === 0 ? 'No documents yet. Upload from Upload & Process.' : 'No documents match your search.'}</div>
               </div>
             </div>
-          ) : (
+          ) : null}
+
+          {filteredDocuments.length > 0 ? (
             filteredDocuments.map((document) => {
               const isProcessing = PROCESSING_STATUSES.has(document.status)
               const isSelected = activeDocumentId === document.id
@@ -180,7 +201,7 @@ export default function MyDocuments() {
                 </div>
               )
             })
-          )}
+          ) : null}
         </div>
 
         {selectedDocument ? (
