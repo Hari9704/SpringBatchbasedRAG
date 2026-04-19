@@ -1,0 +1,11 @@
+server:
+  port: 8085
+spring:
+  application:
+    name: feedback-service
+  datasource:
+    url: jdbc:h2:mem:feedbackdb
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
