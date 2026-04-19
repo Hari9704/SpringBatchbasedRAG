@@ -1,5 +1,10 @@
 server:
-  port: 8086
+  port: 8087
+
 spring:
   application:
     name: analytics-service
+
+docintell:
+  cors:
+    allowed-origins: http://localhost:5173

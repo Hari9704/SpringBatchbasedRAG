@@ -6,43 +6,40 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/analytics")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "${docintell.cors.allowed-origins:http://localhost:5173}")
 public class AnalyticsController {
 
-    @GetMapping
-    public ResponseEntity<?> getAnalytics() {
+    // Normally this service would use WebClient or FeignClient to fetch data from Document, Query, and Feedback services.
+    // For this demonstration step, we will provide structured data matching the new DTO formats.
+    
+    @GetMapping("/summary")
+    public ResponseEntity<?> getDashboardStats(@RequestParam(value = "userId", defaultValue = "1") Long userId) {
         return ResponseEntity.ok(Map.of(
-            "querySuccessRate", 93.4,
-            "avgConfidence", 91,
-            "feedbackScore", 4.6,
-            "selfImprovement", 12,
-            "queryTrend", List.of(
-                Map.of("day", "Mon", "queries", 12, "success", 11),
-                Map.of("day", "Tue", "queries", 19, "success", 17),
-                Map.of("day", "Wed", "queries", 15, "success", 14),
-                Map.of("day", "Thu", "queries", 22, "success", 20),
-                Map.of("day", "Fri", "queries", 28, "success", 26)
-            ),
-            "confidenceTrend", List.of(
-                Map.of("week", "W1", "confidence", 78),
-                Map.of("week", "W4", "confidence", 85),
-                Map.of("week", "W7", "confidence", 91)
-            ),
-            "topTopics", List.of(
-                Map.of("topic", "Financial Reports", "count", 34),
-                Map.of("topic", "Compliance", "count", 28),
-                Map.of("topic", "Risk Assessment", "count", 22)
-            )
+            "documents", Map.of("total", 12, "processed", 10),
+            "queries", Map.of("total", 47, "last30Days", 35),
+            "accuracy", Map.of("value", 93, "trend", "positive")
         ));
     }
 
-    @GetMapping("/feedback-trends")
-    public ResponseEntity<?> getFeedbackTrends() {
+    @GetMapping("/trend")
+    public ResponseEntity<?> getQueryTrend() {
         return ResponseEntity.ok(List.of(
-            Map.of("month", "Jan", "accepted", 62, "rejected", 22, "edited", 8),
-            Map.of("month", "Feb", "accepted", 70, "rejected", 18, "edited", 10),
-            Map.of("month", "Mar", "accepted", 78, "rejected", 14, "edited", 12),
-            Map.of("month", "Apr", "accepted", 85, "rejected", 8, "edited", 6)
+            Map.of("day", "Mon", "queries", 4),
+            Map.of("day", "Tue", "queries", 7),
+            Map.of("day", "Wed", "queries", 5),
+            Map.of("day", "Thu", "queries", 9),
+            Map.of("day", "Fri", "queries", 12),
+            Map.of("day", "Sat", "queries", 3),
+            Map.of("day", "Sun", "queries", 7)
+        ));
+    }
+
+    @GetMapping("/feedback")
+    public ResponseEntity<?> getFeedbackStats() {
+        return ResponseEntity.ok(List.of(
+            Map.of("name", "Accepted", "value", 28, "color", "#10b981"),
+            Map.of("name", "Edited", "value", 4, "color", "#f59e0b"),
+            Map.of("name", "Rejected", "value", 2, "color", "#ef4444")
         ));
     }
 }

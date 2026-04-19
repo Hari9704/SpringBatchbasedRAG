@@ -1,48 +1,89 @@
 package com.docintell.document.controller;
 
+import com.docintell.document.model.Document;
+import com.docintell.document.repository.DocumentRepository;
+import com.docintell.document.service.DocumentService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import java.util.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/documents")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "${docintell.cors.allowed-origins:http://localhost:5173}")
 public class DocumentController {
 
+    private final DocumentService documentService;
+    private final DocumentRepository documentRepository;
+
+    public DocumentController(DocumentService documentService, DocumentRepository documentRepository) {
+        this.documentService = documentService;
+        this.documentRepository = documentRepository;
+    }
+
+    @PostMapping("/upload")
+    public ResponseEntity<?> upload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "userId", defaultValue = "1") Long userId) {
+        try {
+            Document doc = documentService.upload(file, userId);
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                    "id", doc.getId(),
+                    "name", doc.getName(),
+                    "type", doc.getType(),
+                    "sizeBytes", doc.getSizeBytes(),
+                    "status", doc.getStatus().name(),
+                    "message", "Upload successful. Processing will begin shortly."
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to store file"));
+        }
+    }
+
     @GetMapping
-    public ResponseEntity<?> getAllDocuments() {
-        return ResponseEntity.ok(List.of(
-            Map.of("id", 1, "name", "Q3_Financial_Report.pdf", "type", "PDF", "size", "2.4 MB", "version", "v3", "status", "Processed", "chunks", 23, "date", "2026-04-18"),
-            Map.of("id", 2, "name", "Compliance_Guidelines_v2.docx", "type", "DOCX", "size", "1.1 MB", "version", "v2", "status", "Processed", "chunks", 15, "date", "2026-04-17"),
-            Map.of("id", 3, "name", "SLA_Agreement_2026.pdf", "type", "PDF", "size", "3.8 MB", "version", "v2", "status", "Processed", "chunks", 42, "date", "2026-04-16")
-        ));
+    public ResponseEntity<List<Document>> getUserDocuments(
+            @RequestParam(value = "userId", defaultValue = "1") Long userId) {
+        return ResponseEntity.ok(documentService.getUserDocuments(userId));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getDocument(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(documentService.getById(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteDocument(
+            @PathVariable Long id,
+            @RequestParam(value = "userId", defaultValue = "1") Long userId) {
+        try {
+            documentService.deleteDocument(id, userId);
+            return ResponseEntity.ok(Map.of("message", "Document deleted"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<?> getStats(@RequestParam(value = "userId", defaultValue = "1") Long userId) {
         return ResponseEntity.ok(Map.of(
-            "id", id, "name", "Q3_Financial_Report.pdf", "type", "PDF",
-            "content", "Quarterly Financial Report Q3 2026...", "status", "Processed"
+                "totalDocuments", documentService.countByUser(userId),
+                "processedDocuments", documentService.countProcessedByUser(userId)
         ));
     }
 
-    @PostMapping("/upload")
-    public ResponseEntity<?> uploadDocument(@RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok(Map.of(
-            "message", "File uploaded successfully",
-            "filename", file.getOriginalFilename(),
-            "size", file.getSize(),
-            "status", "PROCESSING"
-        ));
-    }
-
-    @GetMapping("/{id}/versions")
-    public ResponseEntity<?> getVersions(@PathVariable Long id) {
-        return ResponseEntity.ok(List.of(
-            Map.of("version", "v3", "date", "2026-04-18", "changes", "12% content updated"),
-            Map.of("version", "v2", "date", "2026-04-10", "changes", "Added risk section"),
-            Map.of("version", "v1", "date", "2026-03-28", "changes", "Initial version")
-        ));
+    @GetMapping("/all")
+    public ResponseEntity<List<Document>> getAllDocuments() {
+        return ResponseEntity.ok(documentRepository.findAll());
     }
 }

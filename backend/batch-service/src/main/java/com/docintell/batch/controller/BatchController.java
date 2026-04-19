@@ -1,39 +1,61 @@
 package com.docintell.batch.controller;
 
+import com.docintell.batch.model.BatchJobRecord;
+import com.docintell.batch.repository.BatchJobRecordRepository;
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobParameters;
+import org.springframework.batch.core.JobParametersBuilder;
+import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.*;
+
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/batch")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "${docintell.cors.allowed-origins:http://localhost:5173}")
 public class BatchController {
 
+    private final JobLauncher jobLauncher;
+    private final Job documentProcessingJob;
+    private final BatchJobRecordRepository jobRecordRepository;
+
+    public BatchController(JobLauncher jobLauncher, Job documentProcessingJob, BatchJobRecordRepository jobRecordRepository) {
+        this.jobLauncher = jobLauncher;
+        this.documentProcessingJob = documentProcessingJob;
+        this.jobRecordRepository = jobRecordRepository;
+    }
+
     @GetMapping("/jobs")
-    public ResponseEntity<?> getJobs() {
-        return ResponseEntity.ok(List.of(
-            Map.of("id", "JOB-347", "name", "Q3 Report Processing", "status", "completed", "started", "13:02", "duration", "4.2s", "steps", "6/6"),
-            Map.of("id", "JOB-346", "name", "Compliance Doc Reindex", "status", "running", "started", "12:58", "duration", "2.1s", "steps", "4/6"),
-            Map.of("id", "JOB-345", "name", "Vendor Contract Batch", "status", "completed", "started", "12:45", "duration", "8.7s", "steps", "6/6"),
-            Map.of("id", "JOB-344", "name", "SLA Embedding Update", "status", "failed", "started", "12:30", "duration", "1.3s", "steps", "2/6")
-        ));
+    public ResponseEntity<List<BatchJobRecord>> getJobs() {
+        return ResponseEntity.ok(jobRecordRepository.findAllByOrderByStartTimeDesc());
     }
 
     @PostMapping("/trigger")
     public ResponseEntity<?> triggerJob(@RequestBody Map<String, String> request) {
-        return ResponseEntity.ok(Map.of(
-            "jobId", "JOB-348",
-            "status", "STARTED",
-            "message", "Batch job triggered successfully"
-        ));
-    }
+        try {
+            Long documentId = Long.valueOf(request.get("documentId"));
+            String filePath = request.get("filePath");
+            String fileType = request.get("fileType");
 
-    @PostMapping("/retry/{jobId}")
-    public ResponseEntity<?> retryJob(@PathVariable String jobId) {
-        return ResponseEntity.ok(Map.of(
-            "jobId", jobId,
-            "status", "RETRYING",
-            "message", "Job retry initiated"
-        ));
+            JobParameters params = new JobParametersBuilder()
+                    .addString("documentId", String.valueOf(documentId))
+                    .addString("filePath", filePath)
+                    .addString("fileType", fileType)
+                    .addLong("time", System.currentTimeMillis())
+                    .toJobParameters();
+
+            // Note: Job runs asynchronously normally, but Spring Boot defaults to SyncTaskExecutor.
+            // In a production env, configure a SimpleAsyncTaskExecutor for JobLauncher.
+            jobLauncher.run(documentProcessingJob, params);
+
+            return ResponseEntity.ok(Map.of(
+                    "status", "STARTED",
+                    "message", "Batch job configured and submitted to queue"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
     }
 }

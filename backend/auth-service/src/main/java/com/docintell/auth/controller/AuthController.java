@@ -1,43 +1,55 @@
 package com.docintell.auth.controller;
 
+import com.docintell.auth.dto.AuthResponse;
+import com.docintell.auth.dto.LoginRequest;
+import com.docintell.auth.dto.RegisterRequest;
+import com.docintell.auth.model.User;
+import com.docintell.auth.repository.UserRepository;
+import com.docintell.auth.service.AuthService;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "http://localhost:5173")
 public class AuthController {
 
+    private final AuthService authService;
+    private final UserRepository userRepository;
+
+    public AuthController(AuthService authService, UserRepository userRepository) {
+        this.authService = authService;
+        this.userRepository = userRepository;
+    }
+
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> credentials) {
-        String email = credentials.get("email");
-        String password = credentials.get("password");
-        // JWT authentication logic
-        return ResponseEntity.ok(Map.of(
-            "token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock-jwt-token",
-            "user", Map.of("email", email, "role", "ADMIN"),
-            "message", "Login successful"
-        ));
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
+        try {
+            AuthResponse response = authService.login(request);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody Map<String, String> userData) {
-        return ResponseEntity.ok(Map.of(
-            "message", "User registered successfully",
-            "user", Map.of(
-                "email", userData.get("email"),
-                "name", userData.get("fullName"),
-                "role", userData.getOrDefault("role", "USER")
-            )
-        ));
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
+        try {
+            AuthResponse response = authService.register(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/users")
-    public ResponseEntity<?> getUsers() {
-        return ResponseEntity.ok(java.util.List.of(
-            Map.of("id", 1, "name", "Admin User", "email", "admin@docintell.ai", "role", "ADMIN", "status", "Active"),
-            Map.of("id", 2, "name", "Sarah Johnson", "email", "sarah@company.com", "role", "USER", "status", "Active")
-        ));
+    public ResponseEntity<List<User>> getUsers() {
+        return ResponseEntity.ok(userRepository.findAll());
     }
 }

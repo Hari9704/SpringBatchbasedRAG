@@ -1,13 +1,31 @@
 server:
   port: 8083
+
 spring:
   application:
     name: batch-service
   datasource:
     url: jdbc:h2:mem:batchdb
     driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  h2:
+    console:
+      enabled: true
   batch:
     jdbc:
       initialize-schema: always
     job:
       enabled: false
+
+docintell:
+  chunking:
+    target-size: 512
+    overlap: 50
+  embedding:
+    model: text-embedding-004
+    batch-size: 10
+  cors:
+    allowed-origins: http://localhost:5173

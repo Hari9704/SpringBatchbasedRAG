@@ -1,5 +1,6 @@
 server:
-  port: 8085
+  port: 8086
+
 spring:
   application:
     name: feedback-service
@@ -9,3 +10,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+    show-sql: false
+  h2:
+    console:
+      enabled: true
+
+docintell:
+  cors:
+    allowed-origins: http://localhost:5173

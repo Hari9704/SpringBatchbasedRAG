@@ -1,42 +1,43 @@
 package com.docintell.query.controller;
 
+import com.docintell.query.dto.QueryRequest;
+import com.docintell.query.dto.QueryResponse;
+import com.docintell.query.repository.QueryRecordRepository;
+import com.docintell.query.service.RagService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/query")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "${docintell.cors.allowed-origins:http://localhost:5173}")
 public class QueryController {
 
-    @PostMapping
-    public ResponseEntity<?> query(@RequestBody Map<String, Object> request) {
-        String question = (String) request.get("question");
-        boolean reasoning = (boolean) request.getOrDefault("reasoning", false);
-        boolean deepAnalysis = (boolean) request.getOrDefault("deepAnalysis", false);
+    private final RagService ragService;
+    private final QueryRecordRepository queryRepository;
 
-        return ResponseEntity.ok(Map.of(
-            "answer", "Based on the retrieved document context, here is the analysis for: \"" + question + "\"",
-            "confidence", 94,
-            "sources", List.of(
-                Map.of("chunk", "Q3_Financial_Report.pdf — Chunk #18", "relevance", 97),
-                Map.of("chunk", "Q3_Financial_Report.pdf — Chunk #19", "relevance", 94),
-                Map.of("chunk", "Risk_Assessment_Q2.pdf — Chunk #7", "relevance", 82)
-            ),
-            "reasoning", reasoning,
-            "deepAnalysis", deepAnalysis
-        ));
+    public QueryController(RagService ragService, QueryRecordRepository queryRepository) {
+        this.ragService = ragService;
+        this.queryRepository = queryRepository;
     }
 
-    @PostMapping("/reason")
-    public ResponseEntity<?> getReasoningBreakdown(@RequestBody Map<String, String> request) {
+    @PostMapping
+    public ResponseEntity<QueryResponse> query(@Valid @RequestBody QueryRequest request) {
+        QueryResponse response = ragService.executeQuery(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/history/{userId}")
+    public ResponseEntity<?> getQueryHistory(@PathVariable Long userId) {
+        return ResponseEntity.ok(queryRepository.findByUserIdOrderByTimestampDesc(userId));
+    }
+    
+    @GetMapping("/stats/{userId}")
+    public ResponseEntity<?> getStats(@PathVariable Long userId) {
         return ResponseEntity.ok(Map.of(
-            "steps", List.of(
-                Map.of("phase", "Query Decomposition", "details", List.of("Breaking query into sub-questions", "Identified 3 sub-queries")),
-                Map.of("phase", "Context Retrieval", "details", List.of("Vector search with cosine similarity", "Retrieved 5 chunks from 2 documents")),
-                Map.of("phase", "Intermediate Reasoning", "details", List.of("Chain-of-thought reasoning applied", "Cross-validated with historical data")),
-                Map.of("phase", "Final Synthesis", "details", List.of("Combined insights from 3 reasoning steps", "Confidence: 94%"))
-            )
+                "totalQueries", queryRepository.countByUserId(userId)
         ));
     }
 }

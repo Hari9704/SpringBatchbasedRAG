@@ -1,5 +1,10 @@
 server:
   port: 8082
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
 spring:
   application:
     name: document-service
@@ -9,7 +14,15 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
-  servlet:
-    multipart:
-      max-file-size: 50MB
-      max-request-size: 50MB
+    show-sql: false
+  h2:
+    console:
+      enabled: true
+
+docintell:
+  upload:
+    max-file-size: 52428800
+    allowed-types: pdf,docx,txt
+    storage-path: ./data/uploads
+  cors:
+    allowed-origins: http://localhost:5173
