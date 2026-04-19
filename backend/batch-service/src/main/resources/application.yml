@@ -24,6 +24,8 @@ spring:
       api-key: ${GEMINI_API_KEY:paste_your_key_here}
 
 docintell:
+  vectorstore:
+    path: ${DOCINTELL_VECTORSTORE_PATH:./data/vectors.json}
   chunking:
     target-size: 512
     overlap: 50
@@ -31,6 +33,6 @@ docintell:
     model: text-embedding-004
     batch-size: 10
   services:
-    document-service-url: http://localhost:8082
+    document-service-url: ${DOCINTELL_SERVICES_DOCUMENT_SERVICE_URL:http://localhost:8082}
   cors:
-    allowed-origins: http://localhost:5173
+    allowed-origins: ${DOCINTELL_CORS_ALLOWED_ORIGINS:http://localhost:5173}

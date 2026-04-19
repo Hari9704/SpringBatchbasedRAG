@@ -1,0 +1,13 @@
+# Build one Spring Boot service (ARG SERVICE = Maven module id, e.g. api-gateway)
+FROM maven:3.9-eclipse-temurin-17-alpine AS build
+WORKDIR /build
+COPY backend /build
+ARG SERVICE=api-gateway
+RUN mvn -B -DskipTests package -pl "${SERVICE}" -am
+
+FROM eclipse-temurin:17-jre-alpine
+ARG SERVICE=api-gateway
+WORKDIR /app
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+COPY --from=build /build/${SERVICE}/target/${SERVICE}-1.0.0-SNAPSHOT.jar /app/app.jar
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

@@ -1,0 +1,11 @@
+.git
+.idea
+**/.classpath
+**/.project
+**/.settings
+**/target
+node_modules
+**/node_modules
+dist
+**/dist
+*.log

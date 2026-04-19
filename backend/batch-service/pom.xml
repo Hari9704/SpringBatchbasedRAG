@@ -17,4 +17,13 @@
         <!-- Spring AI Gemini and Simple Vector Store -->
         <dependency><groupId>org.springframework.ai</groupId><artifactId>spring-ai-google-gemini-spring-boot-starter</artifactId></dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

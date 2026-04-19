@@ -8,32 +8,32 @@ spring:
     gateway:
       routes:
         - id: auth-service
-          uri: http://localhost:8081
+          uri: ${DOCINTELL_SVC_AUTH:http://localhost:8081}
           predicates:
             - Path=/api/auth/**
         - id: document-service
-          uri: http://localhost:8082
+          uri: ${DOCINTELL_SVC_DOCUMENT:http://localhost:8082}
           predicates:
             - Path=/api/documents/**
         - id: batch-service
-          uri: http://localhost:8083
+          uri: ${DOCINTELL_SVC_BATCH:http://localhost:8083}
           predicates:
             - Path=/api/batch/**
         - id: query-service
-          uri: http://localhost:8085
+          uri: ${DOCINTELL_SVC_QUERY:http://localhost:8085}
           predicates:
             - Path=/api/query/**
         - id: feedback-service
-          uri: http://localhost:8086
+          uri: ${DOCINTELL_SVC_FEEDBACK:http://localhost:8086}
           predicates:
             - Path=/api/feedback/**
         - id: analytics-service
-          uri: http://localhost:8087
+          uri: ${DOCINTELL_SVC_ANALYTICS:http://localhost:8087}
           predicates:
             - Path=/api/analytics/**
       globalcors:
         corsConfigurations:
           '[/**]':
-            allowedOrigins: "http://localhost:5173"
+            allowedOriginPatterns: ${DOCINTELL_GATEWAY_CORS_PATTERN:http://localhost:5173}
             allowedMethods: "*"
             allowedHeaders: "*"
