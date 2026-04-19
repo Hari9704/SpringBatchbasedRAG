@@ -19,6 +19,9 @@ spring:
       initialize-schema: always
     job:
       enabled: false
+  ai:
+    gemini:
+      api-key: ${GEMINI_API_KEY:paste_your_key_here}
 
 docintell:
   chunking:
