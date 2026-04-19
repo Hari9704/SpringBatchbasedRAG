@@ -34,11 +34,12 @@ public class TextExtractorService {
 
         log.info("Extracting text from {} (type: {})", filePath, normalizedType);
 
-        return switch (normalizedType.toUpperCase()) {
+        String upperType = normalizedType.toUpperCase();
+        return switch (upperType) {
             case "PDF" -> extractFromPdf(filePath);
             case "DOCX" -> extractFromDocx(filePath);
             case "TXT" -> extractFromTxt(filePath);
-            default -> throw new IllegalArgumentException("Unsupported file type: " + fileType);
+            default -> throw new IllegalArgumentException("Unsupported file type: " + upperType);
         };
     }
 
