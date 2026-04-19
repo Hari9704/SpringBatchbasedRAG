@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Upload, FolderOpen, GitCompare,
   MessageSquare, Brain, ThumbsUp, BarChart3,
-  Settings, Shield, TestTube
+  Settings, Shield, TestTube, UserCircle
 } from 'lucide-react'
 
 const navItems = [
@@ -30,6 +30,7 @@ const navItems = [
       { to: '/admin', label: 'Admin Panel', icon: Settings },
       { to: '/auth', label: 'Auth & Roles', icon: Shield },
       { to: '/tests', label: 'Selenium Tests', icon: TestTube },
+      { to: '/user', label: 'User Panel', icon: UserCircle },
     ]
   }
 ]

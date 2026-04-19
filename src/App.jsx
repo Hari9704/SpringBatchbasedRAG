@@ -13,6 +13,7 @@ import Analytics from './pages/Analytics'
 import AdminPanel from './pages/AdminPanel'
 import AuthRoles from './pages/AuthRoles'
 import SeleniumTests from './pages/SeleniumTests'
+import UserPanel from './pages/UserPanel'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/auth" element={<AuthRoles />} />
             <Route path="/tests" element={<SeleniumTests />} />
+            <Route path="/user" element={<UserPanel />} />
           </Routes>
         </main>
       </div>
