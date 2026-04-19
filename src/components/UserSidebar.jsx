@@ -31,11 +31,11 @@ const navItems = [
   }
 ]
 
-export default function UserSidebar({ onLogout }) {
+export default function UserSidebar({ onLogout, isOpen = false, onNavigate = () => {} }) {
   const location = useLocation()
 
   return (
-    <aside className="sidebar" id="user-sidebar">
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`} id="user-sidebar">
       <div className="sidebar-brand">
         <h1>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -64,6 +64,7 @@ export default function UserSidebar({ onLogout }) {
                   to={item.to}
                   className={`sidebar-link ${isActive ? 'active' : ''}`}
                   id={`nav-user-${item.to.split('/').pop() || 'dashboard'}`}
+                  onClick={onNavigate}
                 >
                   <Icon className="sidebar-icon" />
                   <span>{item.label}</span>
@@ -75,7 +76,7 @@ export default function UserSidebar({ onLogout }) {
       </nav>
 
       <div className="sidebar-footer">
-        <button className="btn btn-outline logout-btn" onClick={onLogout}>
+        <button className="btn btn-outline logout-btn" onClick={onLogout} type="button">
           <LogOut size={18} />
           <span>Sign Out</span>
         </button>

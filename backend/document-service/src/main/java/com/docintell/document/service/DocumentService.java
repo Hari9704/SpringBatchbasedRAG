@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -80,6 +81,25 @@ public class DocumentService {
     public Document getById(Long id) {
         return documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Document not found: " + id));
+    }
+
+    public Document updateProcessingState(Long id, Document.Status status, Integer chunks, LocalDateTime processedDate) {
+        Document document = getById(id);
+
+        document.setStatus(status);
+        if (chunks != null) {
+            document.setChunks(chunks);
+        }
+
+        if (processedDate != null) {
+            document.setProcessedDate(processedDate);
+        } else if (status == Document.Status.PROCESSED) {
+            document.setProcessedDate(LocalDateTime.now());
+        } else if (status != Document.Status.PROCESSED) {
+            document.setProcessedDate(null);
+        }
+
+        return documentRepository.save(document);
     }
 
     public void deleteDocument(Long id, Long userId) {

@@ -1,51 +1,130 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, Send, Upload, FileText, Brain, ChevronDown, Sparkles, BookOpen } from 'lucide-react'
+import { Send, Upload, FileText, Brain, ChevronDown, Sparkles, BookOpen, Loader, AlertCircle } from 'lucide-react'
+import { useUserWorkspace } from '../../context/UserWorkspaceContext'
+import { DEFAULT_USER_ID, runQuery } from '../../lib/api'
 
-const availableDocs = [
-  { id: 1, name: 'Q3_Financial_Report.pdf', chunks: 23 },
-  { id: 2, name: 'Compliance_Guidelines_v2.docx', chunks: 15 },
-  { id: 3, name: 'SLA_Agreement_2026.pdf', chunks: 42 },
-]
+const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
 
-const mockResponses = {
-  default: {
-    answer: 'Based on the document analysis, I found the following key insights from the selected document. The RAG pipeline retrieved 3 relevant chunks with high semantic similarity, cross-referenced across multiple sections to ensure accuracy.',
-    sources: [
-      { chunk: 'Section 3.2 — Risk Assessment', relevance: 97 },
-      { chunk: 'Section 5.1 — Financial Summary', relevance: 91 },
-      { chunk: 'Appendix A — Supporting Data', relevance: 84 },
-    ],
-    confidence: 94,
-  }
+function formatStatus(status) {
+  return status.toLowerCase().replace(/_/g, ' ')
+}
+
+function getMessageKey(message, index) {
+  return `${message.role}-${index}-${message.content.slice(0, 20)}`
 }
 
 export default function AIChat() {
   const navigate = useNavigate()
-  const [hasDocuments] = useState(availableDocs.length > 0) // In real app, fetch from API
-  const [selectedDoc, setSelectedDoc] = useState(availableDocs[0]?.id || null)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [reasoning, setReasoning] = useState(false)
   const [showDocPicker, setShowDocPicker] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [chatError, setChatError] = useState('')
+  const {
+    documents,
+    processedDocuments,
+    selectedDocument,
+    selectDocument,
+    latestJobsByDocumentId,
+    loading,
+    workspaceError,
+  } = useUserWorkspace()
 
-  // NO DOCUMENT → NO CHAT GATE
-  if (!hasDocuments) {
+  const currentDocument = useMemo(() => {
+    if (selectedDocument?.status === 'PROCESSED') {
+      return selectedDocument
+    }
+
+    return processedDocuments[0] || null
+  }, [processedDocuments, selectedDocument])
+
+  const pendingDocuments = documents.filter((document) => PROCESSING_STATUSES.has(document.status))
+
+  useEffect(() => {
+    setMessages([])
+    setInput('')
+    setChatError('')
+  }, [currentDocument?.id])
+
+  const handleSend = async () => {
+    const question = input.trim()
+    if (!question || !currentDocument || sending) {
+      return
+    }
+
+    const userMessage = { role: 'user', content: question }
+    setMessages((previous) => [...previous, userMessage])
+    setInput('')
+    setSending(true)
+    setChatError('')
+
+    try {
+      const response = await runQuery({
+        userId: DEFAULT_USER_ID,
+        documentId: currentDocument.id,
+        question,
+        reasoning,
+      })
+
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: 'ai',
+          content: response.answer,
+          confidence: response.confidence,
+          sources: response.sources || [],
+        },
+      ])
+    } catch (error) {
+      const message = error.message || 'Unable to send your query right now.'
+      setChatError(message)
+      setMessages((previous) => [
+        ...previous,
+        { role: 'error', content: message },
+      ])
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      handleSend()
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="animate-fade-in" id="ai-chat-loading">
+        <div className="page-header">
+          <h1>AI Chat</h1>
+          <p>Loading your document workspace.</p>
+        </div>
+        <div className="card empty-state">
+          <Loader size={24} className="spin" />
+          <div>Loading your documents and chat context...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!documents.length) {
     return (
       <div className="animate-fade-in" id="ai-chat-gate">
         <div className="page-header">
           <h1>AI Chat</h1>
-          <p>Chat with your documents using RAG-powered AI</p>
+          <p>Chat with your documents using RAG-powered AI.</p>
         </div>
-        <div className="card" style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-          <div style={{ width: 80, height: 80, borderRadius: 'var(--radius-full)', background: 'var(--color-primary-lighter)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--spacing-lg)', fontSize: 36 }}>
-            <Upload size={36} />
-          </div>
-          <h2 style={{ marginBottom: 8 }}>Upload a Document First</h2>
-          <p style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--spacing-xl)', maxWidth: 400, margin: '0 auto var(--spacing-xl)' }}>
-            You need to upload and process at least one document before you can start an AI conversation. The system uses your documents as the knowledge base.
+        <div className="card empty-state">
+          <Upload size={36} />
+          <h2>Upload a document first</h2>
+          <p>
+            You need to upload and process at least one document before the chatbot can answer from your knowledge base.
           </p>
-          <button className="btn btn-primary" style={{ padding: '14px 32px', fontSize: 16 }} onClick={() => navigate('/app/upload')}>
+          <button className="btn btn-primary" onClick={() => navigate('/app/upload')} type="button">
             <Upload size={18} /> Upload Your First Document
           </button>
         </div>
@@ -53,114 +132,169 @@ export default function AIChat() {
     )
   }
 
-  const handleSend = () => {
-    if (!input.trim()) return
-    const userMsg = { role: 'user', content: input }
-    const resp = mockResponses.default
-    const aiMsg = {
-      role: 'ai', content: resp.answer,
-      sources: resp.sources, confidence: resp.confidence,
-      reasoning: reasoning
-    }
-    setMessages([...messages, userMsg, aiMsg])
-    setInput('')
-  }
+  if (!processedDocuments.length) {
+    return (
+      <div className="animate-fade-in" id="ai-chat-pending">
+        <div className="page-header">
+          <h1>AI Chat</h1>
+          <p>Chat will unlock as soon as at least one document finishes processing.</p>
+        </div>
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+        {workspaceError ? (
+          <div className="status-card error" style={{ marginBottom: 'var(--spacing-lg)' }}>
+            <AlertCircle size={18} />
+            <span>{workspaceError}</span>
+          </div>
+        ) : null}
 
-  const currentDoc = availableDocs.find(d => d.id === selectedDoc)
+        <div className="card">
+          <div className="card-title">Documents still processing</div>
+          {pendingDocuments.map((document) => {
+            const job = latestJobsByDocumentId[document.id]
+            return (
+              <div key={document.id} className="list-row">
+                <div>
+                  <div style={{ fontWeight: 600 }}>{document.name}</div>
+                  <div className="inline-muted">{job?.currentStep || formatStatus(document.status)}</div>
+                </div>
+                <span className="badge badge-processing">
+                  <Loader size={12} className="spin" /> {formatStatus(document.status)}
+                </span>
+              </div>
+            )
+          })}
+
+          {documents.some((document) => document.status === 'FAILED') ? (
+            <div className="status-card error" style={{ marginTop: 'var(--spacing-lg)' }}>
+              <AlertCircle size={18} />
+              <span>One or more documents failed. Reprocess them from My Documents if needed.</span>
+            </div>
+          ) : null}
+
+          <div style={{ display: 'flex', gap: 12, marginTop: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={() => navigate('/app/upload')} type="button">
+              <Upload size={18} /> Upload Another Document
+            </button>
+            <button className="btn btn-secondary" onClick={() => navigate('/app/documents')} type="button">
+              <FileText size={18} /> View Documents
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="animate-fade-in" id="ai-chat">
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
         <div>
           <h1>AI Chat</h1>
-          <p>Chat with your documents using RAG-powered AI</p>
+          <p>Ask questions about a processed document and get RAG-backed answers.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Reasoning Toggle */}
-          <div className="toggle-wrapper" onClick={() => setReasoning(!reasoning)}>
-            <div className={`toggle ${reasoning ? 'active' : ''}`}></div>
-            <span className="toggle-label"><Brain size={14} /> Reasoning</span>
-          </div>
+        <div className="toggle-wrapper" onClick={() => setReasoning((value) => !value)}>
+          <div className={`toggle ${reasoning ? 'active' : ''}`}></div>
+          <span className="toggle-label"><Brain size={14} /> Reasoning</span>
         </div>
       </div>
 
-      {/* Document Selector */}
+      {(workspaceError || chatError) ? (
+        <div className="status-card error" style={{ marginBottom: 'var(--spacing-lg)' }}>
+          <AlertCircle size={18} />
+          <span>{workspaceError || chatError}</span>
+        </div>
+      ) : null}
+
+      {pendingDocuments.length > 0 ? (
+        <div className="status-card" style={{ marginBottom: 'var(--spacing-lg)' }}>
+          <Loader size={16} className="spin" />
+          <span>{pendingDocuments.length} other document(s) are still processing in the background.</span>
+        </div>
+      ) : null}
+
       <div className="card" style={{ marginBottom: 'var(--spacing-md)', padding: '12px var(--spacing-lg)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => setShowDocPicker(!showDocPicker)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => setShowDocPicker((visible) => !visible)}>
           <FileText size={18} style={{ color: 'var(--color-primary)' }} />
           <div style={{ flex: 1 }}>
-            <span style={{ fontWeight: 600 }}>{currentDoc?.name}</span>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginLeft: 8 }}>{currentDoc?.chunks} chunks</span>
+            <span style={{ fontWeight: 600 }}>{currentDocument?.name}</span>
+            <span className="inline-muted" style={{ marginLeft: 8 }}>{currentDocument?.chunks || 0} chunks</span>
           </div>
           <ChevronDown size={18} style={{ color: 'var(--color-text-muted)', transform: showDocPicker ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
         </div>
-        {showDocPicker && (
-          <div style={{ marginTop: 12, borderTop: '1px solid var(--color-border-light)', paddingTop: 12 }}>
-            {availableDocs.map(doc => (
-              <div key={doc.id} style={{
-                padding: '10px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                background: selectedDoc === doc.id ? 'var(--color-primary-lighter)' : 'transparent',
-                marginBottom: 4, display: 'flex', alignItems: 'center', gap: 10,
-                transition: 'background 0.15s'
-              }} onClick={() => { setSelectedDoc(doc.id); setShowDocPicker(false) }}>
-                <FileText size={16} style={{ color: selectedDoc === doc.id ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
-                <span style={{ fontWeight: selectedDoc === doc.id ? 600 : 400 }}>{doc.name}</span>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginLeft: 'auto' }}>{doc.chunks} chunks</span>
-              </div>
+        {showDocPicker ? (
+          <div className="document-picker">
+            {processedDocuments.map((document) => (
+              <button
+                key={document.id}
+                className={`document-picker-option ${currentDocument?.id === document.id ? 'active' : ''}`}
+                onClick={() => {
+                  selectDocument(document.id)
+                  setShowDocPicker(false)
+                }}
+                type="button"
+              >
+                <FileText size={16} />
+                <span style={{ fontWeight: currentDocument?.id === document.id ? 600 : 500 }}>{document.name}</span>
+                <span className="inline-muted" style={{ marginLeft: 'auto' }}>{document.chunks || 0} chunks</span>
+              </button>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Chat Area */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="chat-container">
-          <div className="chat-messages" style={{ minHeight: 400 }}>
-            {messages.length === 0 && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
-                <Sparkles size={48} style={{ marginBottom: 16, opacity: 0.3 }} />
-                <h3 style={{ fontWeight: 600, color: 'var(--color-text-secondary)' }}>Start a conversation</h3>
-                <p style={{ fontSize: 'var(--font-size-sm)' }}>Ask anything about {currentDoc?.name}</p>
+          <div className="chat-messages" style={{ minHeight: 420 }}>
+            {messages.length === 0 ? (
+              <div className="empty-state compact" style={{ minHeight: 320 }}>
+                <Sparkles size={42} />
+                <h3>Start a conversation</h3>
+                <p>Ask anything about {currentDocument?.name}.</p>
               </div>
-            )}
-            {messages.map((msg, i) => (
-              <div key={i} className={`chat-message ${msg.role}`}>
-                <div>{msg.content}</div>
-                {msg.role === 'ai' && msg.sources && (
-                  <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.08)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                      <BookOpen size={12} /> Sources · Confidence: {msg.confidence}%
+            ) : null}
+
+            {messages.map((message, index) => (
+              <div key={getMessageKey(message, index)} className={`chat-message ${message.role === 'error' ? 'ai error' : message.role}`}>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
+                {message.role === 'ai' && message.sources?.length ? (
+                  <div className="chat-sources">
+                    <div className="chat-sources-title">
+                      <BookOpen size={12} /> Sources · Confidence: {message.confidence ?? '--'}%
                     </div>
-                    {msg.sources.map((s, j) => (
-                      <div key={j} style={{ fontSize: 'var(--font-size-xs)', padding: '4px 0', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>📄 {s.chunk}</span>
-                        <span style={{ color: s.relevance >= 90 ? 'var(--color-accent)' : 'var(--color-warning)' }}>{s.relevance}%</span>
+                    {message.sources.map((source, sourceIndex) => (
+                      <div key={`${source.chunk}-${sourceIndex}`} className="chat-source-row">
+                        <span>{source.chunk}</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {typeof source.relevance === 'number' ? `${source.relevance}%` : source.relevance}
+                        </span>
                       </div>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
             ))}
+
+            {sending ? (
+              <div className="chat-message ai">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Loader size={16} className="spin" />
+                  <span>Retrieving relevant chunks and drafting an answer...</span>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="chat-input-area">
             <input
               className="chat-input"
-              placeholder={`Ask about ${currentDoc?.name}...`}
+              placeholder={`Ask about ${currentDocument?.name}...`}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={sending}
               id="chat-input"
             />
-            <button className="btn btn-primary" onClick={handleSend} disabled={!input.trim()} id="chat-send">
-              <Send size={18} />
+            <button className="btn btn-primary" onClick={handleSend} disabled={!input.trim() || sending} id="chat-send" type="button">
+              {sending ? <Loader size={18} className="spin" /> : <Send size={18} />}
             </button>
           </div>
         </div>

@@ -23,7 +23,7 @@ public class BatchJobRecord {
     private LocalDateTime startTime = LocalDateTime.now();
     private LocalDateTime endTime;
 
-    private int totalSteps = 7;
+    private int totalSteps = 6;
     private int completedSteps = 0;
 
     private String currentStep;

@@ -1,5 +1,6 @@
 package com.docintell.document.controller;
 
+import com.docintell.document.dto.DocumentProcessingUpdateRequest;
 import com.docintell.document.model.Document;
 import com.docintell.document.repository.DocumentRepository;
 import com.docintell.document.service.DocumentService;
@@ -59,6 +60,26 @@ public class DocumentController {
             return ResponseEntity.ok(documentService.getById(id));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PatchMapping("/{id}/processing")
+    public ResponseEntity<?> updateProcessingState(@PathVariable Long id,
+                                                   @RequestBody DocumentProcessingUpdateRequest request) {
+        if (request.getStatus() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "status is required"));
+        }
+
+        try {
+            Document updated = documentService.updateProcessingState(
+                    id,
+                    request.getStatus(),
+                    request.getChunks(),
+                    request.getProcessedDate()
+            );
+            return ResponseEntity.ok(updated);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
         }
     }
 

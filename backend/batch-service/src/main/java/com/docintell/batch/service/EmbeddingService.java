@@ -73,6 +73,7 @@ public class EmbeddingService {
             for (DocumentChunk chunk : chunks) {
                 chunk.setStatus(DocumentChunk.ChunkStatus.FAILED);
             }
+            throw new RuntimeException("Failed to generate embeddings", e);
         }
     }
 }

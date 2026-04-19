@@ -30,5 +30,7 @@ docintell:
   embedding:
     model: text-embedding-004
     batch-size: 10
+  services:
+    document-service-url: http://localhost:8082
   cors:
     allowed-origins: http://localhost:5173

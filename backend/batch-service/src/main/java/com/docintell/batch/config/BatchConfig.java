@@ -4,10 +4,14 @@ import com.docintell.batch.model.BatchJobRecord;
 import com.docintell.batch.model.DocumentChunk;
 import com.docintell.batch.repository.BatchJobRecordRepository;
 import com.docintell.batch.repository.DocumentChunkRepository;
+import com.docintell.batch.service.DocumentSyncService;
 import com.docintell.batch.service.EmbeddingService;
 import com.docintell.batch.service.SmartChunkingService;
 import com.docintell.batch.service.TextCleanerService;
 import com.docintell.batch.service.TextExtractorService;
+import org.springframework.batch.core.BatchStatus;
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -24,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Configuration
 public class BatchConfig {
@@ -34,24 +39,30 @@ public class BatchConfig {
     private final EmbeddingService embeddingService;
     private final DocumentChunkRepository chunkRepository;
     private final BatchJobRecordRepository jobRecordRepository;
+    private final DocumentSyncService documentSyncService;
 
     public BatchConfig(TextExtractorService textExtractor, TextCleanerService textCleaner,
                        SmartChunkingService chunkingService, EmbeddingService embeddingService,
-                       DocumentChunkRepository chunkRepository, BatchJobRecordRepository jobRecordRepository) {
+                       DocumentChunkRepository chunkRepository,
+                       BatchJobRecordRepository jobRecordRepository,
+                       DocumentSyncService documentSyncService) {
         this.textExtractor = textExtractor;
         this.textCleaner = textCleaner;
         this.chunkingService = chunkingService;
         this.embeddingService = embeddingService;
         this.chunkRepository = chunkRepository;
         this.jobRecordRepository = jobRecordRepository;
+        this.documentSyncService = documentSyncService;
     }
 
     @Bean
     public Job documentProcessingJob(JobRepository jobRepository, Step initializeJobStep,
                                      Step extractTextStep, Step cleanTextStep,
                                      Step chunkTextStep, Step generateEmbeddingsStep,
-                                     Step finalizeJobStep) {
+                                     Step finalizeJobStep,
+                                     JobExecutionListener documentProcessingJobListener) {
         return new JobBuilder("documentProcessingJob", jobRepository)
+                .listener(documentProcessingJobListener)
                 .start(initializeJobStep)
                 .next(extractTextStep)
                 .next(cleanTextStep)
@@ -62,20 +73,66 @@ public class BatchConfig {
     }
 
     @Bean
+    public JobExecutionListener documentProcessingJobListener() {
+        return new JobExecutionListener() {
+            @Override
+            public void beforeJob(JobExecution jobExecution) {
+                // No-op
+            }
+
+            @Override
+            public void afterJob(JobExecution jobExecution) {
+                if (jobExecution.getStatus() == BatchStatus.COMPLETED) {
+                    return;
+                }
+
+                String documentIdValue = jobExecution.getJobParameters().getString("documentId");
+                if (documentIdValue == null) {
+                    return;
+                }
+
+                Long documentId = Long.valueOf(documentIdValue);
+                long chunkCount = chunkRepository.countByDocumentId(documentId);
+                Object recordIdValue = jobExecution.getExecutionContext().get("jobRecordId");
+
+                if (recordIdValue instanceof Long recordId) {
+                    BatchJobRecord record = jobRecordRepository.findById(recordId).orElse(null);
+                    if (record != null) {
+                        record.setStatus(BatchJobRecord.JobStatus.FAILED);
+                        record.setCurrentStep("Failed");
+                        record.setEndTime(LocalDateTime.now());
+                        record.setErrorMessage(jobExecution.getAllFailureExceptions().stream()
+                                .map(Throwable::getMessage)
+                                .filter(message -> message != null && !message.isBlank())
+                                .collect(Collectors.joining("\n")));
+                        jobRecordRepository.save(record);
+                    }
+                }
+
+                documentSyncService.markFailed(documentId, (int) chunkCount);
+            }
+        };
+    }
+
+    @Bean
     @StepScope
-    public Step initializeJobStep(JobRepository jobRepository, PlatformTransactionManager txManager) {
+    public Step initializeJobStep(JobRepository jobRepository,
+                                  PlatformTransactionManager txManager,
+                                  @Value("#{jobParameters['documentName']}") String documentName,
+                                  @Value("#{jobParameters['documentId']}") String documentIdStr) {
         return new StepBuilder("initializeJob", jobRepository)
                 .tasklet((contribution, chunkContext) -> {
-                    String docIdStr = (String) chunkContext.getStepContext().getJobParameters().get("documentId");
-                    Long docId = Long.valueOf(docIdStr);
-                    
+                    Long docId = Long.valueOf(documentIdStr);
+
                     BatchJobRecord record = new BatchJobRecord();
                     record.setDocumentId(docId);
+                    record.setDocumentName(documentName);
                     record.setStatus(BatchJobRecord.JobStatus.RUNNING);
-                    record.setCurrentStep("Initialization");
+                    record.setCurrentStep("Validating document");
                     jobRecordRepository.save(record);
-                    
+
                     chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().put("jobRecordId", record.getId());
+                    documentSyncService.updateProcessingState(docId, "VALIDATING", null, null);
                     return RepeatStatus.FINISHED;
                 }, txManager).build();
     }
@@ -87,15 +144,15 @@ public class BatchConfig {
                                 @Value("#{jobParameters['fileType']}") String fileType) {
         return new StepBuilder("extractText", jobRepository)
                 .tasklet((contribution, chunkContext) -> {
-                    updateJobStepDetails(chunkContext, "Extract Text");
-                    
+                    updateJobStepDetails(chunkContext, "Extracting text", "EXTRACTING");
+
                     if (!Files.exists(Path.of(filePath))) {
                         throw new RuntimeException("File not found: " + filePath);
                     }
-                    
+
                     String rawText = textExtractor.extract(filePath, fileType);
                     chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().put("rawText", rawText);
-                    
+
                     return RepeatStatus.FINISHED;
                 }, txManager).build();
     }
@@ -105,12 +162,12 @@ public class BatchConfig {
     public Step cleanTextStep(JobRepository jobRepository, PlatformTransactionManager txManager) {
         return new StepBuilder("cleanText", jobRepository)
                 .tasklet((contribution, chunkContext) -> {
-                    updateJobStepDetails(chunkContext, "Clean & Normalize Text");
-                    
+                    updateJobStepDetails(chunkContext, "Cleaning text", "CLEANING");
+
                     String rawText = (String) chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("rawText");
                     String cleanedText = textCleaner.clean(rawText);
                     cleanedText = textCleaner.deduplicateParagraphs(cleanedText);
-                    
+
                     chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().put("cleanedText", cleanedText);
                     return RepeatStatus.FINISHED;
                 }, txManager).build();
@@ -122,16 +179,19 @@ public class BatchConfig {
                               @Value("#{jobParameters['documentId']}") String documentIdStr) {
         return new StepBuilder("chunkText", jobRepository)
                 .tasklet((contribution, chunkContext) -> {
-                    updateJobStepDetails(chunkContext, "Smart Chunking");
-                    
+                    updateJobStepDetails(chunkContext, "Chunking document", "CHUNKING");
+
                     Long documentId = Long.valueOf(documentIdStr);
                     String cleanedText = (String) chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("cleanedText");
-                    
+
                     chunkRepository.deleteByDocumentId(documentId); // Clear old chunks if retry
-                    
+
                     List<DocumentChunk> chunks = chunkingService.chunk(documentId, cleanedText);
                     chunkRepository.saveAll(chunks);
-                    
+
+                    chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().put("chunkCount", chunks.size());
+                    documentSyncService.updateProcessingState(documentId, "CHUNKING", chunks.size(), null);
+
                     return RepeatStatus.FINISHED;
                 }, txManager).build();
     }
@@ -142,46 +202,61 @@ public class BatchConfig {
                                        @Value("#{jobParameters['documentId']}") String documentIdStr) {
         return new StepBuilder("generateEmbeddings", jobRepository)
                 .tasklet((contribution, chunkContext) -> {
-                    updateJobStepDetails(chunkContext, "Generate Embeddings");
-                    
+                    updateJobStepDetails(chunkContext, "Generating embeddings", "EMBEDDING");
+
                     Long documentId = Long.valueOf(documentIdStr);
                     List<DocumentChunk> chunks = chunkRepository.findByDocumentIdAndStatus(documentId, DocumentChunk.ChunkStatus.CLEANED);
-                    
+
                     embeddingService.embedChunks(chunks);
                     chunkRepository.saveAll(chunks); // Save updated statuses + vector IDs
-                    
+
                     return RepeatStatus.FINISHED;
                 }, txManager).build();
     }
 
     @Bean
     @StepScope
-    public Step finalizeJobStep(JobRepository jobRepository, PlatformTransactionManager txManager) {
+    public Step finalizeJobStep(JobRepository jobRepository,
+                                PlatformTransactionManager txManager,
+                                @Value("#{jobParameters['documentId']}") String documentIdStr) {
         return new StepBuilder("finalizeJob", jobRepository)
                 .tasklet((contribution, chunkContext) -> {
+                    updateJobStepDetails(chunkContext, "Finalizing job", null);
+
+                    Long documentId = Long.valueOf(documentIdStr);
                     Long recordId = (Long) chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("jobRecordId");
                     BatchJobRecord record = jobRecordRepository.findById(recordId).orElseThrow();
-                    
+
+                    int chunkCount = (int) chunkRepository.countByDocumentId(documentId);
                     record.setStatus(BatchJobRecord.JobStatus.COMPLETED);
                     record.setCurrentStep("Finished");
                     record.setCompletedSteps(record.getTotalSteps());
                     record.setEndTime(LocalDateTime.now());
-                    
+
                     jobRecordRepository.save(record);
-                    
-                    // TODO: Call Document-Service (or use event bus/Kafka) to update Document status to PROCESSED
-                    
+                    documentSyncService.markProcessed(documentId, chunkCount);
+
                     return RepeatStatus.FINISHED;
                 }, txManager).build();
     }
 
-    private void updateJobStepDetails(org.springframework.batch.core.scope.context.ChunkContext chunkContext, String stepName) {
+    private void updateJobStepDetails(org.springframework.batch.core.scope.context.ChunkContext chunkContext,
+                                      String stepName,
+                                      String documentStatus) {
         Long recordId = (Long) chunkContext.getStepContext().getStepExecution().getJobExecution().getExecutionContext().get("jobRecordId");
         if (recordId != null) {
             BatchJobRecord record = jobRecordRepository.findById(recordId).orElseThrow();
+            record.setStatus(BatchJobRecord.JobStatus.RUNNING);
             record.setCurrentStep(stepName);
             record.setCompletedSteps(record.getCompletedSteps() + 1);
             jobRecordRepository.save(record);
+        }
+
+        if (documentStatus != null) {
+            String documentIdValue = (String) chunkContext.getStepContext().getJobParameters().get("documentId");
+            if (documentIdValue != null) {
+                documentSyncService.updateProcessingState(Long.valueOf(documentIdValue), documentStatus, null, null);
+            }
         }
     }
 }

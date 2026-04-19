@@ -49,11 +49,18 @@ public class RagService {
 
         // Step 1 & 2: Embed Query and Vector Search
         log.debug("Performing vector similarity search. Target TopK: {}, Threshold: {}", topK, similarityThreshold);
-        SearchRequest searchRequest = SearchRequest.builder()
+        SearchRequest.Builder searchRequestBuilder = SearchRequest.builder()
                 .query(request.getQuestion())
                 .topK(topK)
-                .similarityThreshold(similarityThreshold)
-                .build();
+                .similarityThreshold(similarityThreshold);
+
+        if (request.getDocumentId() != null) {
+            String filterExpression = "documentId == " + request.getDocumentId();
+            log.debug("Applying document filter expression: {}", filterExpression);
+            searchRequestBuilder.filterExpression(filterExpression);
+        }
+
+        SearchRequest searchRequest = searchRequestBuilder.build();
                 
         List<Document> topChunks = vectorStore.similaritySearch(searchRequest);
         
@@ -62,7 +69,11 @@ public class RagService {
         List<Map<String, Object>> sources = List.of();
 
         if (topChunks.isEmpty()) {
-            answer = "I'm sorry, but I could not find any relevant information in your uploaded documents to answer that question.";
+            if (request.getDocumentId() != null) {
+                answer = "I could not find relevant information in the selected document to answer that question.";
+            } else {
+                answer = "I'm sorry, but I could not find any relevant information in your uploaded documents to answer that question.";
+            }
             log.warn("Fail-Safe Triggered: No chunks met similarity threshold.");
         } else {
             // Step 3: Build Context
@@ -95,6 +106,8 @@ public class RagService {
             
             sources = topChunks.stream()
                 .map(doc -> Map.of(
+                        "documentId", doc.getMetadata().get("documentId"),
+                        "chunkIndex", doc.getMetadata().get("chunkIndex"),
                         "chunk", doc.getContent().length() > 50 ? doc.getContent().substring(0, 50) + "..." : doc.getContent(),
                         "relevance", "High"
                 ))
