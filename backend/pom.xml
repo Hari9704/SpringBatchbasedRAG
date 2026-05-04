@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.5</version>
+        <version>3.5.0</version>
         <relativePath/>
     </parent>
 
@@ -30,7 +30,16 @@
 
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2024.0.1</spring-cloud.version>
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
+        <!-- Explicit version overrides to address remaining CVEs not yet covered by the Spring Boot 3.5.0 BOM -->
+        <tomcat.version>10.1.41</tomcat.version>
+        <spring-security.version>6.5.0</spring-security.version>
+        <spring-framework.version>6.2.8</spring-framework.version>
+        <netty.version>4.1.121.Final</netty.version>
+        <reactor-netty.version>1.2.6</reactor-netty.version>
+        <logback.version>1.5.19</logback.version>
+        <jackson-bom.version>2.19.0</jackson-bom.version>
+        <bouncycastle.version>1.80</bouncycastle.version>
     </properties>
 
     <dependencyManagement>
@@ -48,6 +57,12 @@
                 <version>1.0.0</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Override BouncyCastle to address GHSA-c3fc-8qff-9hwx -->
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
