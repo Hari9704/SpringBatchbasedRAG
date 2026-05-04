@@ -92,7 +92,7 @@ function scoreChunks(chunks, question) {
 export async function queryDocument({ question, documentId, documentName, chunks, reasoning }) {
   const settings = getSettings()
   const { provider, model } = settings
-  const apiKey = settings.apiKey || import.meta.env.VITE_GEMINI_API_KEY || ''
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || settings.apiKey || ''
 
   if (!apiKey) {
     throw new Error('No API key configured. Go to Settings → API Keys to add your Gemini or OpenAI key.')

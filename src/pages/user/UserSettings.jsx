@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Settings, Key, Bell, Brain, FileText, Save, Eye, EyeOff, CheckCircle, ExternalLink } from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
-import { getSettings, saveSettings } from '../../lib/localStore'
+import { getSettings, saveSettings, clearCachedApiKey } from '../../lib/localStore'
 import { MODELS } from '../../lib/gemini'
 import { useToast } from '../../components/Toast'
 
@@ -34,10 +34,12 @@ export default function UserSettings() {
   )
 
   useEffect(() => {
+    // If env var key is configured, clear any stale key from localStorage
+    if (isPreconfigured) clearCachedApiKey()
     const s = getSettings()
     setProvider(s.provider || 'gemini')
     setModel(s.model || 'gemini-1.5-flash')
-    setApiKey(s.apiKey || '')
+    setApiKey(isPreconfigured ? '' : (s.apiKey || ''))
     setQueryMode(s.queryMode || 'basic')
   }, [])
 

@@ -75,8 +75,15 @@ export function getSettings() {
     model: 'gemini-1.5-flash',
     queryMode: 'basic',
     ...saved,
-    apiKey: saved.apiKey || PRECONFIGURED_GEMINI_KEY,
+    // env var always wins over any stale localStorage key
+    apiKey: PRECONFIGURED_GEMINI_KEY || saved.apiKey || '',
   }
+}
+
+export function clearCachedApiKey() {
+  const saved = safeRead(SETTINGS_KEY, {})
+  delete saved.apiKey
+  safeWrite(SETTINGS_KEY, saved)
 }
 
 export function saveSettings(settings) {
