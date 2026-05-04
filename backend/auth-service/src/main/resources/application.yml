@@ -15,9 +15,38 @@ spring:
     console:
       enabled: true
 
+  # Google OAuth2 / OpenID Connect
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:624173578116-2mbqfkpf17l71lmummlig27fe08bel0h.apps.googleusercontent.com}
+            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            scope:
+              - openid
+              - profile
+              - email
+            redirect-uri: "{baseUrl}/login/oauth2/code/google"
+            authorization-grant-type: authorization_code
+        provider:
+          google:
+            issuer-uri: https://accounts.google.com
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+            user-name-attribute: sub
+
+      # JWT resource server — validates Google-issued tokens
+      resourceserver:
+        jwt:
+          issuer-uri: https://accounts.google.com
+          jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
+
 docintell:
   jwt:
     secret: ${JWT_SECRET:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2}
     expiration: 86400000  # 24 hours in ms
   cors:
-    allowed-origins: ${DOCINTELL_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    allowed-origins: ${DOCINTELL_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5000}

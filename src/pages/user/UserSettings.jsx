@@ -24,6 +24,8 @@ export default function UserSettings() {
   const [keyTested, setKeyTested] = useState(null)
   const [testing, setTesting] = useState(false)
 
+  const isPreconfigured = !!import.meta.env.VITE_GEMINI_API_KEY
+
   const { processedDocuments, selectedDocumentId, selectDocument } = useUserWorkspace()
 
   const availableDocs = useMemo(
@@ -135,6 +137,21 @@ export default function UserSettings() {
 
       {tab === 'apikeys' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+
+          {/* Pre-configured banner */}
+          {isPreconfigured && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '14px 18px', borderRadius: 'var(--radius-md)',
+              background: 'var(--color-success-bg)', border: '1px solid #86efac',
+              fontSize: 'var(--font-size-sm)', color: '#166534'
+            }}>
+              <CheckCircle size={18} color="#16a34a" style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Gemini API key is pre-configured.</strong> You can start chatting immediately — no setup needed. Optionally enter your own key below to override it.
+              </div>
+            </div>
+          )}
 
           {/* Provider Selection */}
           <div className="card">
