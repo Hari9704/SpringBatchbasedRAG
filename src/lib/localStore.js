@@ -66,13 +66,17 @@ export function addQuery(query) {
   return queries[0]
 }
 
+const PRECONFIGURED_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
+
 export function getSettings() {
-  return safeRead(SETTINGS_KEY, {
+  const saved = safeRead(SETTINGS_KEY, {})
+  return {
     provider: 'gemini',
     model: 'gemini-1.5-flash',
-    apiKey: '',
     queryMode: 'basic',
-  })
+    ...saved,
+    apiKey: saved.apiKey || PRECONFIGURED_GEMINI_KEY,
+  }
 }
 
 export function saveSettings(settings) {
