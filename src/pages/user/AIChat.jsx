@@ -1,31 +1,91 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Send, Upload, FileText, Brain, ChevronDown, Sparkles, BookOpen, Loader, AlertCircle } from 'lucide-react'
+import { marked } from 'marked'
+import {
+  Send, Upload, FileText, Brain, ChevronDown, Sparkles, BookOpen,
+  Loader, AlertCircle, Copy, Check, Trash2, Key, RefreshCw,
+} from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
 import { DEFAULT_USER_ID, runQuery } from '../../lib/api'
+import { getSettings } from '../../lib/localStore'
+import { useToast } from '../../components/Toast'
+
+marked.setOptions({ breaks: true, gfm: true })
 
 const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
 
 function formatStatus(status) {
-  if (!status) {
-    return 'unknown'
-  }
-
+  if (!status) return 'unknown'
   return String(status).toLowerCase().replace(/_/g, ' ')
 }
 
 function getMessageKey(message, index) {
-  return `${message.role}-${index}-${message.content.slice(0, 20)}`
+  return `${message.role}-${index}-${String(message.content).slice(0, 20)}`
+}
+
+function MarkdownContent({ content }) {
+  const html = useMemo(() => {
+    try {
+      return marked.parse(String(content || ''))
+    } catch {
+      return `<p>${String(content || '')}</p>`
+    }
+  }, [content])
+
+  return (
+    <div
+      className="markdown-body"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
+}
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // clipboard not available
+    }
+  }
+  return (
+    <button
+      className="chat-copy-btn"
+      onClick={handleCopy}
+      title="Copy message"
+      type="button"
+      aria-label="Copy"
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  )
+}
+
+function TypingDots() {
+  return (
+    <div className="chat-message ai" style={{ padding: '14px 18px' }}>
+      <div className="typing-dots">
+        <span /><span /><span />
+      </div>
+    </div>
+  )
 }
 
 export default function AIChat() {
   const navigate = useNavigate()
+  const { addToast } = useToast()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [reasoning, setReasoning] = useState(false)
   const [showDocPicker, setShowDocPicker] = useState(false)
   const [sending, setSending] = useState(false)
   const [chatError, setChatError] = useState('')
+  const messagesEndRef = useRef(null)
+  const inputRef = useRef(null)
+
   const {
     documents,
     processedDocuments,
@@ -38,15 +98,12 @@ export default function AIChat() {
   } = useUserWorkspace()
 
   const currentDocument = useMemo(() => {
-    if (selectedDocument?.status === 'PROCESSED') {
-      return selectedDocument
-    }
-
+    if (selectedDocument?.status === 'PROCESSED') return selectedDocument
     return processedDocuments[0] || null
   }, [processedDocuments, selectedDocument])
 
   const pendingDocuments = documents.filter(
-    (document) => PROCESSING_STATUSES.has(document.status) || document.status === 'FAILED',
+    (d) => PROCESSING_STATUSES.has(d.status) || d.status === 'FAILED',
   )
 
   useEffect(() => {
@@ -55,14 +112,23 @@ export default function AIChat() {
     setChatError('')
   }, [currentDocument?.id])
 
-  const handleSend = async () => {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, sending])
+
+  const settings = getSettings()
+  const hasApiKey = Boolean(settings.apiKey)
+
+  const handleSend = useCallback(async () => {
     const question = input.trim()
-    if (!question || !currentDocument || sending) {
+    if (!question || !currentDocument || sending) return
+
+    if (!hasApiKey) {
+      setChatError('No API key configured. Go to Settings → API Keys to add your Gemini or OpenAI key.')
       return
     }
 
-    const userMessage = { role: 'user', content: question }
-    setMessages((previous) => [...previous, userMessage])
+    setMessages((prev) => [...prev, { role: 'user', content: question }])
     setInput('')
     setSending(true)
     setChatError('')
@@ -75,8 +141,8 @@ export default function AIChat() {
         reasoning,
       })
 
-      setMessages((previous) => [
-        ...previous,
+      setMessages((prev) => [
+        ...prev,
         {
           role: 'ai',
           content: response.answer,
@@ -87,65 +153,61 @@ export default function AIChat() {
     } catch (error) {
       const message = error.message || 'Unable to send your query right now.'
       setChatError(message)
-      setMessages((previous) => [
-        ...previous,
-        { role: 'error', content: message },
-      ])
+      setMessages((prev) => [...prev, { role: 'error', content: message }])
     } finally {
       setSending(false)
+      setTimeout(() => inputRef.current?.focus(), 50)
     }
-  }
+  }, [input, currentDocument, sending, hasApiKey, reasoning])
 
-  const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
       handleSend()
     }
   }
 
+  const handleClearChat = () => {
+    setMessages([])
+    setChatError('')
+    addToast({ message: 'Chat cleared', type: 'info', duration: 2000 })
+  }
+
+  const suggestedQuestions = useMemo(() => {
+    if (!currentDocument) return []
+    return [
+      `Summarize the key points of this document`,
+      `What are the main topics covered?`,
+      `List the most important findings or conclusions`,
+    ]
+  }, [currentDocument])
+
   if (loading) {
     return (
-      <div className="animate-fade-in" id="ai-chat-loading">
-        <div className="page-header">
-          <h1>AI Chat</h1>
-          <p>Loading your document workspace.</p>
-        </div>
-        <div className="card empty-state">
-          <Loader size={24} className="spin" />
-          <div>Loading your documents and chat context...</div>
-        </div>
+      <div className="animate-fade-in">
+        <div className="page-header"><h1>AI Chat</h1><p>Loading your workspace…</p></div>
+        <div className="card empty-state"><Loader size={24} className="spin" /><div>Loading documents…</div></div>
       </div>
     )
   }
 
   if (!documents.length) {
     return (
-      <div className="animate-fade-in" id="ai-chat-gate">
-        <div className="page-header">
-          <h1>AI Chat</h1>
-          <p>Chat with your documents using RAG-powered AI.</p>
-        </div>
-        {workspaceError ? (
+      <div className="animate-fade-in">
+        <div className="page-header"><h1>AI Chat</h1><p>Chat with your documents using AI.</p></div>
+        {workspaceError && (
           <div className="status-card error" style={{ marginBottom: 'var(--spacing-lg)' }}>
             <AlertCircle size={18} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600 }}>Could not reach the API</div>
+              <div style={{ fontWeight: 600 }}>API Error</div>
               <div className="inline-muted" style={{ marginTop: 4 }}>{workspaceError}</div>
-              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn btn-primary btn-sm" type="button" onClick={() => refreshWorkspace({ silent: false })}>
-                  Retry
-                </button>
-                <span className="inline-muted" style={{ fontSize: 'var(--font-size-sm)' }}>Ensure the API gateway is running on port 8080.</span>
-              </div>
             </div>
           </div>
-        ) : null}
+        )}
         <div className="card empty-state">
-          <Upload size={36} />
-          <h2>Upload a document first</h2>
-          <p>
-            You need to upload and process at least one document before the chatbot can answer from your knowledge base.
-          </p>
+          <div className="empty-state-icon-wrap"><Upload size={32} /></div>
+          <h2>No documents yet</h2>
+          <p>Upload a document to start chatting with your knowledge base.</p>
           <button className="btn btn-primary" onClick={() => navigate('/app/upload')} type="button">
             <Upload size={18} /> Upload Your First Document
           </button>
@@ -156,60 +218,31 @@ export default function AIChat() {
 
   if (!processedDocuments.length) {
     return (
-      <div className="animate-fade-in" id="ai-chat-pending">
-        <div className="page-header">
-          <h1>AI Chat</h1>
-          <p>Chat will unlock as soon as at least one document finishes processing.</p>
-        </div>
-
-        {workspaceError ? (
-          <div className="status-card error" style={{ marginBottom: 'var(--spacing-lg)' }}>
-            <AlertCircle size={18} />
-            <span>{workspaceError}</span>
-          </div>
-        ) : null}
-
+      <div className="animate-fade-in">
+        <div className="page-header"><h1>AI Chat</h1><p>Chat will unlock when a document finishes processing.</p></div>
         <div className="card">
-          <div className="card-title">Documents still processing</div>
-          {pendingDocuments.length === 0 ? (
-            <div className="empty-state compact">
-              <FileText size={28} />
-              <div>No in-flight jobs detected. Open Upload & Process or pull to refresh.</div>
-              <button className="btn btn-sm btn-secondary" type="button" style={{ marginTop: 12 }} onClick={() => refreshWorkspace({ silent: true })}>
-                Refresh status
-              </button>
-            </div>
-          ) : null}
-          {pendingDocuments.map((document) => {
-            const job = latestJobsByDocumentId[document.id]
-            const failed = document.status === 'FAILED'
+          <div className="card-title">Documents processing…</div>
+          {pendingDocuments.map((doc) => {
+            const job = latestJobsByDocumentId[doc.id]
             return (
-              <div key={document.id} className="list-row">
+              <div key={doc.id} className="list-row">
                 <div>
-                  <div style={{ fontWeight: 600 }}>{document.name}</div>
-                  <div className="inline-muted">{job?.currentStep || formatStatus(document.status)}</div>
+                  <div style={{ fontWeight: 600 }}>{doc.name}</div>
+                  <div className="inline-muted">{job?.currentStep || formatStatus(doc.status)}</div>
                 </div>
-                <span className={`badge ${failed ? 'badge-error' : 'badge-processing'}`}>
-                  {failed ? <AlertCircle size={12} /> : <Loader size={12} className="spin" />}
-                  {formatStatus(document.status)}
+                <span className={`badge ${doc.status === 'FAILED' ? 'badge-error' : 'badge-processing'}`}>
+                  {doc.status === 'FAILED' ? <AlertCircle size={12} /> : <Loader size={12} className="spin" />}
+                  {formatStatus(doc.status)}
                 </span>
               </div>
             )
           })}
-
-          {documents.some((document) => document.status === 'FAILED') ? (
-            <div className="status-card error" style={{ marginTop: 'var(--spacing-lg)' }}>
-              <AlertCircle size={18} />
-              <span>One or more documents failed. Reprocess them from My Documents if needed.</span>
-            </div>
-          ) : null}
-
           <div style={{ display: 'flex', gap: 12, marginTop: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={() => navigate('/app/upload')} type="button">
-              <Upload size={18} /> Upload Another Document
+              <Upload size={18} /> Upload Another
             </button>
-            <button className="btn btn-secondary" onClick={() => navigate('/app/documents')} type="button">
-              <FileText size={18} /> View Documents
+            <button className="btn btn-secondary" onClick={() => refreshWorkspace({ silent: true })} type="button">
+              <RefreshCw size={16} /> Refresh
             </button>
           </div>
         </div>
@@ -218,118 +251,208 @@ export default function AIChat() {
   }
 
   return (
-    <div className="animate-fade-in" id="ai-chat">
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+    <div className="animate-fade-in" id="ai-chat" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header */}
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 'var(--spacing-md)' }}>
         <div>
           <h1>AI Chat</h1>
-          <p>Ask questions about a processed document and get RAG-backed answers.</p>
+          <p>Ask questions about your documents — powered by {getSettings().provider === 'openai' ? 'OpenAI' : 'Google Gemini'}.</p>
         </div>
-        <div className="toggle-wrapper" onClick={() => setReasoning((value) => !value)}>
-          <div className={`toggle ${reasoning ? 'active' : ''}`}></div>
-          <span className="toggle-label"><Brain size={14} /> Reasoning</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {messages.length > 0 && (
+            <button className="btn btn-sm btn-secondary" onClick={handleClearChat} type="button" title="Clear conversation">
+              <Trash2 size={14} /> Clear
+            </button>
+          )}
+          <div
+            className="toggle-wrapper"
+            onClick={() => setReasoning((v) => !v)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && setReasoning((v) => !v)}
+          >
+            <div className={`toggle ${reasoning ? 'active' : ''}`} />
+            <span className="toggle-label"><Brain size={14} /> Reasoning</span>
+          </div>
         </div>
       </div>
 
-      {(workspaceError || chatError) ? (
-        <div className="status-card error" style={{ marginBottom: 'var(--spacing-lg)' }}>
-          <AlertCircle size={18} />
-          <span>{workspaceError || chatError}</span>
-        </div>
-      ) : null}
-
-      {pendingDocuments.length > 0 ? (
-        <div className="status-card" style={{ marginBottom: 'var(--spacing-lg)' }}>
-          <Loader size={16} className="spin" />
-          <span>{pendingDocuments.length} other document(s) are still processing in the background.</span>
-        </div>
-      ) : null}
-
-      <div className="card" style={{ marginBottom: 'var(--spacing-md)', padding: '12px var(--spacing-lg)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }} onClick={() => setShowDocPicker((visible) => !visible)}>
-          <FileText size={18} style={{ color: 'var(--color-primary)' }} />
+      {/* API Key Warning */}
+      {!hasApiKey && (
+        <div className="status-card" style={{ marginBottom: 'var(--spacing-md)', background: 'var(--color-warning-bg)', borderColor: 'rgba(245,158,11,0.3)', color: '#92400e' }}>
+          <Key size={18} />
           <div style={{ flex: 1 }}>
-            <span style={{ fontWeight: 600 }}>{currentDocument?.name}</span>
-            <span className="inline-muted" style={{ marginLeft: 8 }}>{currentDocument?.chunks || 0} chunks</span>
+            <strong>API key required to use AI Chat.</strong>
+            <span style={{ marginLeft: 8 }}>Add your Gemini or OpenAI key in</span>
+            <button
+              className="btn btn-sm"
+              style={{ marginLeft: 8, background: '#f59e0b', color: 'white', padding: '2px 10px' }}
+              onClick={() => navigate('/app/settings')}
+              type="button"
+            >
+              Settings → API Keys
+            </button>
           </div>
-          <ChevronDown size={18} style={{ color: 'var(--color-text-muted)', transform: showDocPicker ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
         </div>
-        {showDocPicker ? (
-          <div className="document-picker">
-            {processedDocuments.map((document) => (
+      )}
+
+      {/* Error banner */}
+      {(workspaceError || chatError) && (
+        <div className="status-card error" style={{ marginBottom: 'var(--spacing-md)' }}>
+          <AlertCircle size={18} />
+          <div style={{ flex: 1 }}>
+            <span>{workspaceError || chatError}</span>
+            {(chatError || '').includes('API key') && (
               <button
-                key={document.id}
-                className={`document-picker-option ${currentDocument?.id === document.id ? 'active' : ''}`}
-                onClick={() => {
-                  selectDocument(document.id)
-                  setShowDocPicker(false)
-                }}
+                className="btn btn-sm btn-secondary"
+                style={{ marginLeft: 12 }}
+                onClick={() => navigate('/app/settings')}
                 type="button"
               >
-                <FileText size={16} />
-                <span style={{ fontWeight: currentDocument?.id === document.id ? 600 : 500 }}>{document.name}</span>
-                <span className="inline-muted" style={{ marginLeft: 'auto' }}>{document.chunks || 0} chunks</span>
+                <Key size={13} /> Open Settings
+              </button>
+            )}
+          </div>
+          <button className="btn btn-sm btn-secondary" onClick={() => setChatError('')} type="button">Dismiss</button>
+        </div>
+      )}
+
+      {pendingDocuments.length > 0 && (
+        <div className="status-card" style={{ marginBottom: 'var(--spacing-md)', fontSize: 'var(--font-size-sm)' }}>
+          <Loader size={14} className="spin" />
+          <span>{pendingDocuments.length} document(s) still processing in the background.</span>
+        </div>
+      )}
+
+      {/* Document Picker */}
+      <div className="card" style={{ marginBottom: 'var(--spacing-md)', padding: '10px var(--spacing-lg)' }}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+          onClick={() => setShowDocPicker((v) => !v)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && setShowDocPicker((v) => !v)}
+        >
+          <div className="chat-doc-icon"><FileText size={16} /></div>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontWeight: 600, fontSize: 'var(--font-size-base)' }}>{currentDocument?.name}</span>
+            <span className="inline-muted" style={{ marginLeft: 8 }}>{currentDocument?.chunks || 0} chunks</span>
+          </div>
+          <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>Ready</span>
+          <ChevronDown size={16} style={{ color: 'var(--color-text-muted)', transform: showDocPicker ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+        </div>
+        {showDocPicker && (
+          <div className="document-picker">
+            {processedDocuments.map((doc) => (
+              <button
+                key={doc.id}
+                className={`document-picker-option ${currentDocument?.id === doc.id ? 'active' : ''}`}
+                onClick={() => { selectDocument(doc.id); setShowDocPicker(false) }}
+                type="button"
+              >
+                <FileText size={14} />
+                <span style={{ flex: 1, textAlign: 'left', fontWeight: currentDocument?.id === doc.id ? 600 : 500 }}>{doc.name}</span>
+                <span className="inline-muted">{doc.chunks || 0} chunks</span>
               </button>
             ))}
           </div>
-        ) : null}
+        )}
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="chat-container">
-          <div className="chat-messages" style={{ minHeight: 420 }}>
-            {messages.length === 0 ? (
-              <div className="empty-state compact" style={{ minHeight: 320 }}>
-                <Sparkles size={42} />
-                <h3>Start a conversation</h3>
-                <p>Ask anything about {currentDocument?.name}.</p>
+      {/* Chat Area */}
+      <div className="card chat-card">
+        <div className="chat-messages" ref={messagesEndRef}>
+          {messages.length === 0 ? (
+            <div className="chat-empty">
+              <div className="chat-empty-icon"><Sparkles size={36} /></div>
+              <h3>Start a conversation</h3>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)', marginBottom: 16 }}>
+                Ask anything about <strong>{currentDocument?.name}</strong>
+              </p>
+              <div className="suggested-questions">
+                {suggestedQuestions.map((q) => (
+                  <button
+                    key={q}
+                    className="suggested-question"
+                    onClick={() => { setInput(q); inputRef.current?.focus() }}
+                    type="button"
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
-            ) : null}
-
-            {messages.map((message, index) => (
-              <div key={getMessageKey(message, index)} className={`chat-message ${message.role === 'error' ? 'ai error' : message.role}`}>
-                <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
-                {message.role === 'ai' && message.sources?.length ? (
-                  <div className="chat-sources">
-                    <div className="chat-sources-title">
-                      <BookOpen size={12} /> Sources · Confidence: {message.confidence ?? '--'}%
+            </div>
+          ) : (
+            <>
+              {messages.map((message, index) => (
+                <div
+                  key={getMessageKey(message, index)}
+                  className={`chat-message ${message.role === 'error' ? 'ai error-msg' : message.role}`}
+                >
+                  {message.role === 'ai' && (
+                    <div className="chat-avatar ai-avatar">
+                      <Sparkles size={12} />
                     </div>
-                    {message.sources.map((source, sourceIndex) => (
-                      <div key={`${source.chunk}-${sourceIndex}`} className="chat-source-row">
-                        <span>{source.chunk}</span>
-                        <span style={{ fontWeight: 600 }}>
-                          {typeof source.relevance === 'number' ? `${source.relevance}%` : source.relevance}
-                        </span>
+                  )}
+                  {message.role === 'user' && (
+                    <div className="chat-avatar user-avatar">U</div>
+                  )}
+                  <div className="chat-bubble">
+                    {message.role === 'ai'
+                      ? <MarkdownContent content={message.content} />
+                      : <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
+                    }
+                    {message.role === 'ai' && message.sources?.length > 0 && (
+                      <div className="chat-sources">
+                        <div className="chat-sources-title">
+                          <BookOpen size={11} /> Sources · Confidence: {message.confidence ?? '--'}%
+                        </div>
+                        {message.sources.map((source, si) => (
+                          <div key={`${source.chunk}-${si}`} className="chat-source-row">
+                            <span className="source-name">{source.chunk}</span>
+                            {source.preview && <span className="source-preview">{source.preview}</span>}
+                            <span className="source-score">{source.relevance}%</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    {message.role === 'ai' && <CopyButton text={message.content} />}
                   </div>
-                ) : null}
-              </div>
-            ))}
-
-            {sending ? (
-              <div className="chat-message ai">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Loader size={16} className="spin" />
-                  <span>Retrieving relevant chunks and drafting an answer...</span>
                 </div>
-              </div>
-            ) : null}
-          </div>
+              ))}
+              {sending && <TypingDots />}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </div>
 
-          <div className="chat-input-area">
-            <input
-              className="chat-input"
-              placeholder={`Ask about ${currentDocument?.name}...`}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={sending}
-              id="chat-input"
-            />
-            <button className="btn btn-primary" onClick={handleSend} disabled={!input.trim() || sending} id="chat-send" type="button">
-              {sending ? <Loader size={18} className="spin" /> : <Send size={18} />}
-            </button>
-          </div>
+        <div className="chat-input-area">
+          <textarea
+            ref={inputRef}
+            className="chat-input"
+            placeholder={hasApiKey ? `Ask about ${currentDocument?.name}…` : 'Add your API key in Settings to start chatting'}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={sending || !hasApiKey}
+            rows={1}
+            id="chat-input"
+            style={{ resize: 'none', overflowY: 'auto', maxHeight: 120 }}
+          />
+          <button
+            className="btn btn-primary chat-send-btn"
+            onClick={handleSend}
+            disabled={!input.trim() || sending || !hasApiKey}
+            id="chat-send"
+            type="button"
+            title="Send (Enter)"
+          >
+            {sending ? <Loader size={18} className="spin" /> : <Send size={18} />}
+          </button>
+        </div>
+        <div className="chat-input-hint">
+          Press <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for new line
+          {reasoning && <span className="reasoning-hint"> · <Brain size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> Reasoning mode on</span>}
         </div>
       </div>
     </div>
