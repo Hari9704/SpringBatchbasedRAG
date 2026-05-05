@@ -100,8 +100,19 @@ Local, browser-based processing:
 
 ## AI / Gemini API Key
 - `VITE_GEMINI_API_KEY` secret: pre-configures the Gemini key for all users automatically
-- Users can still override with their own key in Settings → API Keys
-- Falls back: `VITE_GEMINI_API_KEY` env → localStorage user-entered key
+- Model fallback chain: gemini-2.0-flash → gemini-2.0-flash-lite → gemini-1.5-flash → gemini-1.5-pro → gemini-1.0-pro
+- Exponential backoff retry (LangGraph-inspired) on rate limit / network errors
+- Priority: env var always wins over localStorage cached key
+
+## Agentic Layer (src/lib/)
+- **agent.js** — LangGraph-inspired state machine: PLANNING→RETRIEVING→ANALYZING→SYNTHESIZING→DONE, with RETRYING nodes and exponential backoff
+- **tools.js** — MCP-style tool registry: searchChunks, extractFacts, summarizeChunks, generateInsights, retryWithBackoff
+- **gemini.js** — withRetry(), validateGeminiKey(), model fallback chain, onStep streaming events
+- **api.js** — processDocumentWithRetry() for auto-retry on upload failures
+
+## Pages
+- **/app/agent** — Agent Studio: interactive LangGraph graph demo, MCP tool registry panel, full tech stack showcase
+- **/app/chat** — AI Chat with Agent Mode toggle (CrewAI crew: Planner/Retriever/Analyst/Synthesizer), live trace visualization
 
 ## Running
 - `npm run dev` — Dev server on port 5000

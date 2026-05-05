@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Upload, FolderOpen,
   MessageSquare, Brain, ThumbsUp, BarChart3,
-  Settings, LogOut, User,
+  Settings, LogOut, User, Cpu,
 } from 'lucide-react'
 
 const navItems = [
@@ -18,6 +18,7 @@ const navItems = [
     section: 'AI',
     items: [
       { to: '/app/chat', label: 'AI Chat', icon: MessageSquare },
+      { to: '/app/agent', label: 'Agent Studio', icon: Cpu, badge: 'NEW' },
       { to: '/app/reasoning', label: 'Reasoning View', icon: Brain },
       { to: '/app/feedback', label: 'Feedback', icon: ThumbsUp },
     ]
@@ -66,9 +67,20 @@ export default function UserSidebar({ onLogout, isOpen = false, onNavigate = () 
                   className={`sidebar-link ${isActive ? 'active' : ''}`}
                   id={`nav-user-${item.to.split('/').pop() || 'dashboard'}`}
                   onClick={onNavigate}
+                  style={{ position: 'relative' }}
                 >
                   <Icon className="sidebar-icon" />
                   <span>{item.label}</span>
+                  {item.badge && (
+                    <span style={{
+                      marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 700,
+                      padding: '2px 6px', borderRadius: 10,
+                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                      color: 'white', letterSpacing: '0.04em'
+                    }}>
+                      {item.badge}
+                    </span>
+                  )}
                 </NavLink>
               )
             })}

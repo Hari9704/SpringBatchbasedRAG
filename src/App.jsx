@@ -25,6 +25,7 @@ import AIChat from './pages/user/AIChat'
 import UserAnalytics from './pages/user/UserAnalytics'
 import UserSettings from './pages/user/UserSettings'
 import UserPanel from './pages/UserPanel'
+import AgentStudio from './pages/user/AgentStudio'
 
 function UserAppShell({ onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -59,6 +60,7 @@ function UserAppShell({ onLogout }) {
           <Route path="/app/upload" element={<UserUpload />} />
           <Route path="/app/documents" element={<MyDocuments />} />
           <Route path="/app/chat" element={<AIChat />} />
+          <Route path="/app/agent" element={<AgentStudio />} />
           <Route path="/app/reasoning" element={<ReasoningBreakdown />} />
           <Route path="/app/feedback" element={<FeedbackLearning />} />
           <Route path="/app/analytics" element={<UserAnalytics />} />
