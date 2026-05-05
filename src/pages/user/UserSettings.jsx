@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Settings, Key, Bell, Brain, FileText, Save, Eye, EyeOff, CheckCircle, ExternalLink } from 'lucide-react'
+import { Settings, Key, Bell, Brain, FileText, Save, Eye, EyeOff, CheckCircle, ExternalLink, Loader } from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
 import { getSettings, saveSettings, clearCachedApiKey } from '../../lib/localStore'
-import { MODELS } from '../../lib/gemini'
+import { MODELS, validateGeminiKey } from '../../lib/gemini'
 import { useToast } from '../../components/Toast'
 
 export default function UserSettings() {
@@ -59,30 +59,23 @@ export default function UserSettings() {
   }
 
   const handleTestKey = async () => {
-    if (!apiKey) return
+    const keyToTest = apiKey || import.meta.env.VITE_GEMINI_API_KEY
+    if (!keyToTest) return
     setTesting(true)
     setKeyTested(null)
     try {
       if (provider === 'gemini') {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: 'Say "OK"' }] }] }),
-          }
-        )
-        if (res.ok) {
-          setKeyTested(true)
-          addToast({ message: 'Gemini API key is valid!', type: 'success' })
-        } else {
-          const err = await res.json().catch(() => ({}))
-          setKeyTested(false)
-          addToast({ message: err?.error?.message || 'Invalid API key', type: 'error' })
-        }
+        const result = await validateGeminiKey(keyToTest)
+        setKeyTested(result.valid)
+        addToast({
+          message: result.valid
+            ? `Gemini key valid — model: ${result.model}`
+            : result.error || 'Invalid API key',
+          type: result.valid ? 'success' : 'error',
+        })
       } else {
         const res = await fetch('https://api.openai.com/v1/models', {
-          headers: { Authorization: `Bearer ${apiKey}` },
+          headers: { Authorization: `Bearer ${keyToTest}` },
         })
         if (res.ok) {
           setKeyTested(true)
