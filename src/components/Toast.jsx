@@ -1,52 +1,105 @@
-import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
+import { createContext, useCallback, useContext, useState } from 'react'
 import { CheckCircle, AlertCircle, Info, X } from 'lucide-react'
 
 const ToastContext = createContext(null)
 
+let toastIdCounter = 0
+
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
-  const counterRef = useRef(0)
 
-  const addToast = useCallback(({ message, type = 'info', duration = 4000 }) => {
-    const id = ++counterRef.current
-    setToasts((prev) => [...prev, { id, message, type }])
-    if (duration > 0) {
-      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), duration)
+  const addToast = useCallback((messageOrObj, type = 'info', duration = 3500) => {
+    let message, t, d
+    if (typeof messageOrObj === 'object' && messageOrObj !== null) {
+      message = messageOrObj.message
+      t = messageOrObj.type || 'info'
+      d = messageOrObj.duration || 3500
+    } else {
+      message = messageOrObj
+      t = type
+      d = duration
     }
-    return id
+    const id = ++toastIdCounter
+    setToasts((prev) => [...prev, { id, message, type: t }])
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id))
+    }, d)
   }, [])
 
   const removeToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
+    setToasts((prev) => prev.filter((toast) => toast.id !== id))
   }, [])
 
   return (
-    <ToastContext.Provider value={{ addToast, removeToast }}>
+    <ToastContext.Provider value={{ addToast }}>
       {children}
-      <div className="toast-container">
-        {toasts.map((toast) => (
-          <Toast key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
-        ))}
+      <div style={{
+        position: 'fixed',
+        bottom: 24,
+        right: 24,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        pointerEvents: 'none',
+      }}>
+        {toasts.map((toast) => {
+          const iconProps = { size: 18, style: { flexShrink: 0 } }
+          const icon = toast.type === 'success'
+            ? <CheckCircle {...iconProps} style={{ ...iconProps.style, color: 'var(--color-success)' }} />
+            : toast.type === 'error'
+              ? <AlertCircle {...iconProps} style={{ ...iconProps.style, color: 'var(--color-error)' }} />
+              : <Info {...iconProps} style={{ ...iconProps.style, color: 'var(--color-info)' }} />
+
+          const borderColor = toast.type === 'success'
+            ? 'rgba(16,185,129,0.25)'
+            : toast.type === 'error'
+              ? 'rgba(239,68,68,0.25)'
+              : 'rgba(59,130,246,0.25)'
+
+          return (
+            <div
+              key={toast.id}
+              style={{
+                pointerEvents: 'all',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                background: 'var(--color-bg-card)',
+                border: `1px solid ${borderColor}`,
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 16px',
+                boxShadow: 'var(--shadow-lg)',
+                minWidth: 260,
+                maxWidth: 380,
+                animation: 'fadeInUp 0.22s ease',
+                fontSize: 'var(--font-size-sm)',
+                fontWeight: 500,
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              {icon}
+              <span style={{ flex: 1 }}>{toast.message}</span>
+              <button
+                type="button"
+                onClick={() => removeToast(toast.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-muted)',
+                  padding: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )
+        })}
       </div>
     </ToastContext.Provider>
-  )
-}
-
-function Toast({ toast, onClose }) {
-  const icons = {
-    success: <CheckCircle size={18} />,
-    error: <AlertCircle size={18} />,
-    info: <Info size={18} />,
-  }
-
-  return (
-    <div className={`toast toast-${toast.type}`}>
-      <span className="toast-icon">{icons[toast.type] || icons.info}</span>
-      <span className="toast-message">{toast.message}</span>
-      <button className="toast-close" onClick={onClose} type="button">
-        <X size={14} />
-      </button>
-    </div>
   )
 }
 
