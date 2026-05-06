@@ -1396,3 +1396,194 @@ button.toggle-wrapper {
   color: var(--color-primary);
   margin: 0 auto;
 }
+
+/* ===== Insight Engine ===== */
+
+.insight-engine-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--spacing-lg);
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Insight card hover */
+.insight-card-hover {
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+.insight-card-hover:hover {
+  transform: translateY(-2px);
+}
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 8px;
+}
+
+/* Knowledge map */
+.knowledge-map {
+  position: relative;
+  height: 200px;
+  background: radial-gradient(ellipse at center, #f8fafc 0%, #eef2ff 100%);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+/* Entity badge */
+.entity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ===== AutoGen Chat ===== */
+
+.autogen-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.autogen-message {
+  display: flex;
+  gap: 12px;
+  padding-bottom: 20px;
+  position: relative;
+}
+
+.autogen-message::before {
+  content: '';
+  position: absolute;
+  left: 17px;
+  top: 40px;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-border-light);
+}
+
+.autogen-message:last-child::before {
+  display: none;
+}
+
+.autogen-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+  z-index: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.autogen-bubble {
+  flex: 1;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: 0 10px 10px 10px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.autogen-from {
+  font-weight: 700;
+  font-size: 0.78rem;
+  margin-bottom: 3px;
+}
+
+/* ===== Memory Store ===== */
+
+.memory-card {
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  cursor: pointer;
+}
+
+.memory-card:hover {
+  border-color: #6366f1;
+  box-shadow: 0 2px 12px rgba(99,102,241,0.1);
+}
+
+.memory-key-phrases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.memory-phrase {
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #6366f1;
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+/* ===== Responsive (mobile) ===== */
+
+@media (max-width: 768px) {
+  .insight-engine-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .autogen-message {
+    gap: 8px;
+  }
+}
+
+/* ===== Confidence bar (ensure high/medium/low classes) ===== */
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.confidence-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--color-border-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.confidence-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+.confidence-bar-fill.high   { background: var(--color-accent); }
+.confidence-bar-fill.medium { background: var(--color-warning); }
+.confidence-bar-fill.low    { background: var(--color-error); }
