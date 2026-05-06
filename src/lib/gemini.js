@@ -232,6 +232,71 @@ export async function queryDocument({ question, documentId, documentName, chunks
   return { answer: result.text, confidence, sources, model: result.model }
 }
 
+/**
+ * Generate structured AI insights for a document using Gemini.
+ * Returns: summary, keyInsights, entities, suggestedQuestions, sentiment, complexity, topics, documentType
+ */
+export async function generateDocumentInsights({ documentName, chunks }) {
+  const settings = getSettings()
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || settings.apiKey || ''
+  if (!apiKey) throw new Error('No API key configured. Go to Settings → API Keys.')
+
+  const context = chunks.slice(0, 10).map((c, i) => `[Chunk ${i + 1}]\n${c.text}`).join('\n\n')
+  const prompt = `You are an expert document analyst. Analyze the document below and return ONLY a valid JSON object (no markdown, no explanation, no code fences).
+
+Document name: "${documentName}"
+
+--- DOCUMENT CONTENT ---
+${context}
+--- END CONTENT ---
+
+Return this exact JSON structure:
+{
+  "summary": "2-3 sentence overview of what this document is about",
+  "keyInsights": ["insight 1", "insight 2", "insight 3", "insight 4", "insight 5"],
+  "entities": [{"name": "Entity", "type": "person|organization|concept|location|metric|technology", "relevance": 85}],
+  "suggestedQuestions": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?"],
+  "sentiment": "positive|neutral|negative",
+  "complexityScore": 6,
+  "topics": ["topic1", "topic2", "topic3"],
+  "keyMetrics": ["any numbers or statistics found in the document"],
+  "documentType": "report|article|research|contract|manual|presentation|other"
+}`
+
+  for (const model of GEMINI_MODEL_CHAIN) {
+    try {
+      const url = `${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.15, maxOutputTokens: 1200 },
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        const msg = (err?.error?.message || '').toLowerCase()
+        if (msg.includes('key') || msg.includes('unauthorized') || res.status === 400 || res.status === 401 || res.status === 403) {
+          throw new Error(err?.error?.message || 'Invalid API key')
+        }
+        continue
+      }
+      const data = await res.json()
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        return { ...parsed, model, generatedAt: new Date().toISOString() }
+      }
+    } catch (err) {
+      const msg = (err?.message || '').toLowerCase()
+      if (msg.includes('key') || msg.includes('invalid') || msg.includes('unauthorized')) throw err
+    }
+  }
+  throw new Error('Failed to generate insights. Check your API key and try again.')
+}
+
 // Validate a Gemini API key by doing a minimal test call
 export async function validateGeminiKey(apiKey) {
   for (const model of GEMINI_MODEL_CHAIN) {
