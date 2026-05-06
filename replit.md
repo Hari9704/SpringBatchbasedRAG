@@ -91,12 +91,9 @@ Local, browser-based processing:
 4. Paste it in Settings → API Keys → Save
 
 ## Authentication
-- **Google OAuth**: "Continue with Google" button on login (uses `@react-oauth/google`)
-  - Client ID: `VITE_GOOGLE_CLIENT_ID` env var (shared)
-  - Fetches user profile (name, email, picture) from Google userinfo endpoint
-- **Email/password**: Simulated client-side auth for demo
-- **Admin role**: Full dashboard (email/password only)
-- **User role**: Personal workspace — supports Google OAuth or email login
+- **Email/password**: Simulated client-side auth for demo (no backend required)
+- **Admin role**: Full dashboard (email/password only — no Google OAuth tab)
+- **User role**: Personal workspace with email login + account registration
 
 ## AI / Gemini API Key
 - `VITE_GEMINI_API_KEY` secret: pre-configures the Gemini key for all users automatically
