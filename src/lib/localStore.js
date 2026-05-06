@@ -100,6 +100,18 @@ export function addFeedback(item) {
   safeWrite(FEEDBACK_KEY, list)
 }
 
+export function getInsights(documentId) {
+  return safeRead(`docintell-insights-${documentId}`, null)
+}
+
+export function saveInsights(documentId, insights) {
+  safeWrite(`docintell-insights-${documentId}`, insights)
+}
+
+export function clearInsights(documentId) {
+  try { localStorage.removeItem(`docintell-insights-${documentId}`) } catch {}
+}
+
 let _nextId = null
 export function nextDocId() {
   if (_nextId === null) {
