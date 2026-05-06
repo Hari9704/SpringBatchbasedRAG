@@ -1,128 +1,121 @@
-import { useState } from 'react'
-import { Cpu, GitBranch, Wrench, Layers, Zap, RefreshCw, CheckCircle, Clock, ArrowRight, ExternalLink } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Cpu, GitBranch, Wrench, Layers, Zap, RefreshCw, CheckCircle,
+  ArrowRight, Brain, Search, Trash2, Clock, MessageCircle, Shield,
+} from 'lucide-react'
 import { AGENTS, AGENT_STATES } from '../../lib/agent'
 import { listTools } from '../../lib/tools'
+import { getAllMemories, clearMemories, getMemoryStats } from '../../lib/memory'
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const GRAPH_NODES = [
+  { id: 'PLANNING',      label: 'Plan',       emoji: '🗺️', color: '#6366f1' },
+  { id: 'MEMORY_RECALL', label: 'Memory',     emoji: '🧠', color: '#f59e0b' },
+  { id: 'RETRIEVING',    label: 'Retrieve',   emoji: '🔍', color: '#3b82f6' },
+  { id: 'ANALYZING',     label: 'Analyze',    emoji: '🧪', color: '#10b981' },
+  { id: 'SYNTHESIZING',  label: 'Synthesize', emoji: '✍️', color: '#f97316' },
+  { id: 'CRITIQUING',    label: 'Critic',     emoji: '🔬', color: '#ef4444' },
+  { id: 'DONE',          label: 'Done',       emoji: '✅', color: '#22c55e' },
+]
 
 const TECH_STACK = [
   {
-    category: 'Core Backend',
-    color: '#6366f1',
-    bg: '#eef2ff',
+    category: 'AI & Agents', color: '#6366f1', bg: '#eef2ff',
     items: [
-      { name: 'Spring Boot 3.5', role: 'Microservice runtime', desc: 'Powers auth-service, batch-service, query-service, document-service, analytics-service.' },
-      { name: 'Spring Batch', role: 'RAG pipeline engine', desc: 'Chunking, embedding, validation — each pipeline step is a Spring Batch Job step with retry/skip policies.' },
-      { name: 'Spring Security + OAuth2', role: 'Auth layer', desc: 'JWT + Google OAuth2/OIDC. Resource server validates Google-issued JWTs.' },
-      { name: 'Spring Cloud Gateway', role: 'API Gateway', desc: 'Routes frontend requests to the correct microservice with rate limiting and auth filter.' },
+      { name: 'Google Gemini 2.0 Flash', role: 'LLM Backbone', desc: 'Primary model for Q&A, reasoning, and document synthesis. Auto-fallback chain across 6 model versions.' },
+      { name: 'LangGraph (pattern)', role: 'State Machine', desc: 'Typed graph with 7 nodes (Plan→Memory→Retrieve→Analyze→Synthesize→Critique→Done) and exponential backoff on each edge.' },
+      { name: 'CrewAI (pattern)', role: 'Multi-Agent Crew', desc: 'Orchestrator + 6 specialized agents collaborate via structured AutoGen-style HANDOFF messages.' },
+      { name: 'AutoGen (pattern)', role: 'Agent Messaging', desc: 'Agents publish structured messages on a shared bus. UI visualizes the inter-agent conversation in real time.' },
     ]
   },
   {
-    category: 'AI & Agents',
-    color: '#f59e0b',
-    bg: '#fffbeb',
+    category: 'Memory & Storage', color: '#f59e0b', bg: '#fffbeb',
     items: [
-      { name: 'Google Gemini 2.0', role: 'LLM backbone', desc: 'Primary AI model for document Q&A, reasoning, and synthesis. Auto-fallback chain across model versions.' },
-      { name: 'LangGraph (concept)', role: 'State machine', desc: 'Agent graph with nodes (Plan→Retrieve→Analyze→Synthesize) and exponential backoff retry on each edge.' },
-      { name: 'CrewAI (concept)', role: 'Multi-agent crew', desc: 'Planner, Retriever, Analyst, and Synthesizer agents collaborate via structured messages.' },
-      { name: 'AutoGen (concept)', role: 'Agent communication', desc: 'Agents emit structured events to the UI, enabling real-time trace visualization.' },
+      { name: 'Semantic Memory Store', role: 'Episodic Memory', desc: 'Persists agent-learned facts across sessions. Future queries recall relevant past knowledge to enrich context.' },
+      { name: 'Insight Engine', role: 'Document Intelligence', desc: 'Gemini generates structured JSON insights: summary, entities, knowledge map, suggested questions.' },
+      { name: 'localStorage Layer', role: 'Client Persistence', desc: 'Documents, queries, settings, memories, and insights stored locally — zero backend required.' },
     ]
   },
   {
-    category: 'MCP & Tools',
-    color: '#10b981',
-    bg: '#f0fdf4',
+    category: 'MCP & Tools', color: '#10b981', bg: '#f0fdf4',
     items: [
-      { name: 'MCP Protocol (concept)', role: 'Tool registry', desc: 'Each tool has a name, description, input schema, and handler — just like real MCP servers (Brave, GitHub, Filesystem).' },
-      { name: 'searchChunks tool', role: 'Semantic search', desc: 'Keyword + proximity scoring across document chunks. The Retriever agent calls this via executeTool().' },
-      { name: 'extractFacts tool', role: 'Fact extraction', desc: 'Sentence-level relevance scoring to pull facts from chunks before synthesizing.' },
-      { name: 'generateInsights tool', role: 'Document insights', desc: 'Extracts top terms, numeric values, and entity mentions for the dashboard.' },
+      { name: 'MCP Protocol (pattern)', role: 'Tool Registry', desc: 'Each tool has name, description, typed schema, and handler — identical to real MCP servers (Brave, GitHub, Filesystem).' },
+      { name: 'searchChunks', role: 'Semantic Search', desc: 'Keyword + proximity scoring across document chunks. Called by Retriever agent.' },
+      { name: 'extractFacts', role: 'Fact Extraction', desc: 'Sentence-level relevance scoring across top chunks. Called by Analyst agent.' },
+      { name: 'detectSentiment + buildKnowledgeGraph', role: 'Analysis Tools', desc: 'Parallel tools run during analysis: sentiment scoring + entity co-occurrence graph construction.' },
     ]
   },
   {
-    category: 'Frontend',
-    color: '#3b82f6',
-    bg: '#eff6ff',
+    category: 'Core Backend', color: '#3b82f6', bg: '#eff6ff',
     items: [
-      { name: 'React 18 + Vite 6', role: 'SPA framework', desc: 'Client-side rendering with hot module reload and optimized production builds.' },
-      { name: 'Google OAuth (@react-oauth/google)', role: 'Frontend auth', desc: '"Continue with Google" button — fetches profile from Google userinfo, maps to app roles.' },
-      { name: 'Recharts', role: 'Analytics charts', desc: 'Interactive charts for query history, confidence scores, and processing metrics.' },
-      { name: 'React Router v6', role: 'Client routing', desc: 'Role-based routing — /admin/* and /app/* shells with protected layout guards.' },
+      { name: 'Spring Boot 3.5', role: 'Microservice Runtime', desc: 'Powers api-gateway, auth-service, document-service, batch-service, query-service, analytics-service.' },
+      { name: 'Spring Batch', role: 'RAG Pipeline Engine', desc: 'Chunking, embedding, validation — each pipeline step is a Batch Job step with retry/skip policies.' },
+      { name: 'Spring Security + OAuth2', role: 'Auth Layer', desc: 'JWT auth, role-based access control, Spring Cloud Gateway rate limiting.' },
     ]
   },
 ]
 
-const GRAPH_NODES = [
-  { id: 'PLANNING',    label: 'Plan',      emoji: '🗺️',  x: 10,  color: '#6366f1' },
-  { id: 'RETRIEVING',  label: 'Retrieve',  emoji: '🔍',  x: 32,  color: '#f59e0b' },
-  { id: 'ANALYZING',   label: 'Analyze',   emoji: '🧪',  x: 54,  color: '#10b981' },
-  { id: 'SYNTHESIZING',label: 'Synthesize',emoji: '✍️',  x: 76,  color: '#3b82f6' },
-  { id: 'DONE',        label: 'Done',      emoji: '✅',  x: 95,  color: '#22c55e' },
-]
+// ─── Components ───────────────────────────────────────────────────────────────
 
 function GraphDemo() {
-  const [activeNode, setActiveNode] = useState(null)
+  const [activeIdx, setActiveIdx] = useState(-1)
   const [running, setRunning] = useState(false)
   const [completed, setCompleted] = useState([])
 
   const runDemo = async () => {
-    setRunning(true)
-    setCompleted([])
-    setActiveNode(null)
-    for (const node of GRAPH_NODES) {
-      setActiveNode(node.id)
-      await new Promise(r => setTimeout(r, 700))
-      setCompleted(prev => [...prev, node.id])
+    setRunning(true); setCompleted([]); setActiveIdx(-1)
+    for (let i = 0; i < GRAPH_NODES.length; i++) {
+      setActiveIdx(i)
+      await new Promise(r => setTimeout(r, 620))
+      setCompleted(prev => [...prev, i])
     }
-    setActiveNode(null)
-    setRunning(false)
+    setActiveIdx(-1); setRunning(false)
   }
 
   return (
-    <div style={{ padding: '1.5rem', background: '#0f172a', borderRadius: 12, position: 'relative' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-        <span style={{ color: '#94a3b8', fontSize: '0.78rem', fontFamily: 'monospace' }}>LangGraph State Machine — Agent Pipeline</span>
-        <button
-          onClick={runDemo}
-          disabled={running}
-          type="button"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px',
-            borderRadius: 8, border: 'none', background: running ? '#1e293b' : '#6366f1',
-            color: running ? '#64748b' : 'white', fontSize: '0.8rem', fontWeight: 600,
-            cursor: running ? 'not-allowed' : 'pointer', transition: 'all 0.2s'
-          }}
-        >
-          {running ? <><RefreshCw size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> Running…</> : <><Zap size={13} /> Run Demo</>}
+    <div style={{ background: '#0f172a', borderRadius: 14, padding: '1.5rem', border: '1px solid #1e293b' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <div>
+          <span style={{ color: '#94a3b8', fontSize: '0.78rem', fontFamily: 'monospace' }}>LangGraph · AutoGen · CrewAI State Machine</span>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+            {['Exponential Backoff', 'Memory Recall', 'Critic Review', 'AutoGen Bus'].map(l => (
+              <span key={l} style={{ padding: '2px 8px', borderRadius: 12, background: '#1e293b', border: '1px solid #334155', color: '#64748b', fontSize: '0.67rem' }}>{l}</span>
+            ))}
+          </div>
+        </div>
+        <button onClick={runDemo} disabled={running} type="button" style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px',
+          borderRadius: 8, border: 'none', background: running ? '#1e293b' : '#6366f1',
+          color: running ? '#64748b' : '#fff', fontSize: '0.8rem', fontWeight: 600,
+          cursor: running ? 'not-allowed' : 'pointer',
+        }}>
+          {running ? <><RefreshCw size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> Running…</> : <><Zap size={13} /> Run Pipeline</>}
         </button>
       </div>
 
-      {/* Graph */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, overflowX: 'auto', paddingBottom: 8 }}>
         {GRAPH_NODES.map((node, i) => {
-          const isDone = completed.includes(node.id)
-          const isActive = activeNode === node.id
+          const isDone = completed.includes(i)
+          const isActive = activeIdx === i
           return (
             <div key={node.id} style={{ display: 'flex', alignItems: 'center', flex: i < GRAPH_NODES.length - 1 ? '1' : 'none' }}>
-              <div
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                  padding: '10px 14px', borderRadius: 10,
-                  background: isActive ? node.color + '33' : isDone ? '#1e293b' : '#1e293b',
-                  border: `2px solid ${isActive ? node.color : isDone ? node.color + '66' : '#334155'}`,
-                  transition: 'all 0.3s', minWidth: 80,
-                  boxShadow: isActive ? `0 0 16px ${node.color}44` : 'none',
-                }}
-              >
-                <span style={{ fontSize: '1.25rem' }}>{isDone ? '✅' : node.emoji}</span>
-                <span style={{ color: isActive ? node.color : isDone ? '#94a3b8' : '#64748b', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                padding: '10px 12px', borderRadius: 10, minWidth: 76, transition: 'all 0.3s',
+                background: isActive ? `${node.color}22` : '#1e293b',
+                border: `2px solid ${isActive ? node.color : isDone ? `${node.color}55` : '#334155'}`,
+                boxShadow: isActive ? `0 0 20px ${node.color}44` : 'none',
+              }}>
+                <span style={{ fontSize: '1.2rem' }}>{isDone ? '✅' : node.emoji}</span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: isActive ? node.color : isDone ? '#94a3b8' : '#64748b', whiteSpace: 'nowrap' }}>
                   {node.label}
                 </span>
-                {isActive && (
-                  <span style={{ fontSize: '0.6rem', color: node.color, animation: 'pulse 1s infinite' }}>● active</span>
-                )}
+                {isActive && <span style={{ fontSize: '0.58rem', color: node.color, animation: 'pulse 0.9s infinite' }}>● live</span>}
               </div>
               {i < GRAPH_NODES.length - 1 && (
-                <div style={{ flex: 1, height: 2, background: isDone && completed.includes(GRAPH_NODES[i+1]?.id) ? '#6366f1' : '#334155', transition: 'background 0.5s', position: 'relative', minWidth: 20 }}>
-                  <ArrowRight size={12} style={{ position: 'absolute', right: -6, top: -5, color: completed.includes(GRAPH_NODES[i+1]?.id) ? '#6366f1' : '#334155' }} />
+                <div style={{ flex: 1, height: 2, minWidth: 16, background: isDone && completed.includes(i + 1) ? '#6366f1' : '#334155', transition: 'background 0.5s', position: 'relative' }}>
+                  <ArrowRight size={11} style={{ position: 'absolute', right: -5, top: -5, color: completed.includes(i + 1) ? '#6366f1' : '#334155' }} />
                 </div>
               )}
             </div>
@@ -130,30 +123,245 @@ function GraphDemo() {
         })}
       </div>
 
-      <div style={{ marginTop: '1rem', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {['Exponential Backoff Retry', 'State Persistence', 'Event Streaming', 'Tool Calls'].map(label => (
-          <span key={label} style={{ padding: '3px 10px', borderRadius: 20, background: '#1e293b', border: '1px solid #334155', color: '#64748b', fontSize: '0.7rem' }}>
-            {label}
-          </span>
+      {/* Agent cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginTop: '1.25rem' }}>
+        {Object.values(AGENTS).map(agent => (
+          <div key={agent.name} style={{
+            padding: '10px 12px', borderRadius: 8, background: '#1e293b',
+            border: `1px solid ${agent.color}33`, display: 'flex', flexDirection: 'column', gap: 5,
+          }}>
+            <span style={{ fontSize: '1.1rem' }}>{agent.emoji}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: agent.color }}>{agent.name}</span>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', lineHeight: 1.4 }}>{agent.desc}</span>
+          </div>
         ))}
       </div>
     </div>
   )
 }
 
+function AutoGenChat() {
+  const [session, setSession] = useState(null)
+  const [expanded, setExpanded] = useState(new Set())
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('docintell-last-autogen')
+      if (raw) setSession(JSON.parse(raw))
+    } catch {}
+  }, [])
+
+  if (!session) return (
+    <div className="card empty-state compact">
+      <MessageCircle size={28} />
+      <div>No agent run recorded yet. Use <strong>Agent Mode</strong> in AI Chat to see inter-agent conversations here.</div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Session header */}
+      <div className="card" style={{ background: '#0f172a', border: 'none', padding: '1rem 1.25rem' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: '#94a3b8', fontSize: '0.72rem', fontFamily: 'monospace', marginBottom: 4 }}>Last AutoGen Session</div>
+            <div style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: 4, fontSize: '0.9rem' }}>"{session.question}"</div>
+            <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{session.documentName} · {new Date(session.timestamp).toLocaleString()}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: session.qualityScore >= 65 ? '#4ade80' : '#f87171' }}>{session.qualityScore}</div>
+              <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Quality /100</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#94a3b8' }}>{(session.messages || []).length}</div>
+              <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Handoffs</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Agent conversation */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <MessageCircle size={16} color="#6366f1" /> AutoGen Inter-Agent Messages
+        </div>
+        <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {(session.messages || []).map((msg, i) => {
+            const isExpanded = expanded.has(i)
+            return (
+              <div key={i} style={{ display: 'flex', gap: 12, position: 'relative', paddingBottom: i < session.messages.length - 1 ? 0 : 0 }}>
+                {i < session.messages.length - 1 && (
+                  <div style={{ position: 'absolute', left: 18, top: 42, bottom: -4, width: 2, background: 'var(--color-border-light)', zIndex: 0 }} />
+                )}
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%', background: msg.fromColor || '#6366f1',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  fontSize: '1rem', boxShadow: `0 2px 8px ${msg.fromColor || '#6366f1'}44`, zIndex: 1,
+                }}>
+                  {msg.fromEmoji}
+                </div>
+                <div style={{ flex: 1, paddingBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.82rem', color: msg.fromColor || '#6366f1' }}>{msg.from}</span>
+                    <ArrowRight size={11} style={{ color: 'var(--color-text-muted)' }} />
+                    <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>{msg.toEmoji} {msg.to}</span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.82rem', color: 'var(--color-text-secondary)', lineHeight: 1.6,
+                      background: '#f8fafc', borderRadius: 8, padding: '10px 12px',
+                      border: '1px solid var(--color-border)',
+                      cursor: msg.content.length > 120 ? 'pointer' : 'default',
+                    }}
+                    onClick={() => {
+                      if (msg.content.length > 120) {
+                        setExpanded(prev => {
+                          const next = new Set(prev)
+                          next.has(i) ? next.delete(i) : next.add(i)
+                          return next
+                        })
+                      }
+                    }}
+                  >
+                    {isExpanded || msg.content.length <= 120
+                      ? msg.content
+                      : msg.content.slice(0, 120) + '… '}
+                    {msg.content.length > 120 && (
+                      <span style={{ color: '#6366f1', fontWeight: 600 }}>{isExpanded ? ' less' : 'more'}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MemoryInspector() {
+  const [search, setSearch] = useState('')
+  const [memories, setMemories] = useState([])
+  const [stats, setStats] = useState({})
+  const [expanded, setExpanded] = useState(null)
+
+  const refresh = () => {
+    setMemories(getAllMemories())
+    setStats(getMemoryStats())
+  }
+  useEffect(() => { refresh() }, [])
+
+  const filtered = useMemo(() => {
+    if (!search) return memories
+    const q = search.toLowerCase()
+    return memories.filter(m => m.question.toLowerCase().includes(q) || m.answerSummary.toLowerCase().includes(q))
+  }, [memories, search])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+        {[
+          { label: 'Total Memories', value: stats.total || 0, color: '#6366f1' },
+          { label: 'Avg Confidence', value: `${stats.avgConfidence || 0}%`, color: '#10b981' },
+          { label: 'Total Recalls', value: stats.totalRecalls || 0, color: '#f59e0b' },
+          { label: 'Documents', value: stats.uniqueDocs || 0, color: '#3b82f6' },
+        ].map(s => (
+          <div key={s.label} className="stat-card" style={{ padding: '1rem' }}>
+            <div className="stat-label">{s.label}</div>
+            <div className="stat-value" style={{ color: s.color, fontSize: '1.5rem' }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search + Clear */}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+          <input
+            className="form-input"
+            placeholder="Search memories…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ paddingLeft: 36 }}
+          />
+        </div>
+        <button className="btn btn-sm btn-secondary" type="button" onClick={refresh}>
+          <RefreshCw size={14} />
+        </button>
+        {memories.length > 0 && (
+          <button className="btn btn-sm btn-secondary" type="button"
+            onClick={() => { if (window.confirm('Clear all memories?')) { clearMemories(); refresh() } }}
+            style={{ color: 'var(--color-error)', borderColor: 'var(--color-error)' }}>
+            <Trash2 size={14} /> Clear All
+          </button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card empty-state compact">
+          <Brain size={28} />
+          <div>{memories.length === 0 ? 'No memories yet. Run Agent Mode queries to build the semantic memory store.' : 'No memories match your search.'}</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map(m => (
+            <div key={m.id} className="card" style={{ padding: '0.875rem 1rem', cursor: 'pointer', transition: 'all 0.15s' }}
+              onClick={() => setExpanded(expanded === m.id ? null : m.id)}
+              onMouseOver={e => e.currentTarget.style.borderColor = '#6366f1'}
+              onMouseOut={e => e.currentTarget.style.borderColor = 'var(--color-border)'}
+            >
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #eef2ff, #f5f3ff)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '1rem',
+                }}>🧠</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.question}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{m.documentName}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>·</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Clock size={10} /> {new Date(m.timestamp).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {expanded === m.id && (
+                    <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, fontSize: '0.8rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, border: '1px solid var(--color-border)' }}>
+                      {m.answerSummary}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flex: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 700,
+                    background: m.confidence >= 80 ? '#ecfdf5' : '#fff7ed',
+                    color: m.confidence >= 80 ? '#059669' : '#d97706',
+                  }}>{m.confidence}%</span>
+                  {m.recallCount > 0 && (
+                    <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)' }}>recalled {m.recallCount}×</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ToolCard({ tool }) {
   return (
-    <div style={{
-      padding: '1rem', borderRadius: 10, background: 'white',
-      border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 8
-    }}>
+    <div style={{ padding: '1rem', borderRadius: 10, background: '#fff', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ padding: 6, background: '#f0fdf4', borderRadius: 8 }}>
-          <Wrench size={14} color="#10b981" />
-        </div>
+        <div style={{ padding: 6, background: '#f0fdf4', borderRadius: 8 }}><Wrench size={14} color="#10b981" /></div>
         <code style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>{tool.name}()</code>
       </div>
-      <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>{tool.description}</p>
+      <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>{tool.description}</p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {Object.keys(tool.schema).map(k => (
           <code key={k} style={{ fontSize: '0.68rem', padding: '2px 6px', background: '#f1f5f9', borderRadius: 4, color: '#475569' }}>
@@ -165,48 +373,44 @@ function ToolCard({ tool }) {
   )
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function AgentStudio() {
   const [activeTab, setActiveTab] = useState('graph')
   const tools = listTools()
 
   const tabs = [
-    { id: 'graph', label: 'Agent Graph', icon: GitBranch },
-    { id: 'tools', label: 'MCP Tools', icon: Wrench },
-    { id: 'stack', label: 'Tech Stack', icon: Layers },
+    { id: 'graph',   label: 'Agent Graph',    icon: GitBranch },
+    { id: 'autogen', label: 'AutoGen Chat',   icon: MessageCircle },
+    { id: 'memory',  label: 'Memory Store',   icon: Brain },
+    { id: 'tools',   label: 'MCP Tools',      icon: Wrench },
+    { id: 'stack',   label: 'Tech Stack',     icon: Layers },
   ]
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: 1100 }}>
       <div className="page-header">
         <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Cpu size={26} style={{ color: 'var(--color-primary)' }} />
-          Agent Studio
+          <Cpu size={26} style={{ color: 'var(--color-primary)' }} /> Agent Studio
         </h1>
-        <p>Visualize the agentic pipeline, MCP tool registry, and full tech stack powering DocIntell AI.</p>
+        <p>Visualize the 7-node agentic pipeline, AutoGen inter-agent conversations, semantic memory store, and MCP tool registry.</p>
       </div>
 
-      {/* Tech badge strip */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
-        {['LangGraph', 'CrewAI', 'AutoGen', 'MCP Protocol', 'Gemini 2.0', 'Spring Batch', 'Spring Security OAuth2'].map(t => (
+        {['LangGraph', 'CrewAI', 'AutoGen', 'MCP Protocol', 'Gemini 2.0', 'Semantic Memory', 'Critic Review', 'Spring Batch'].map(t => (
           <span key={t} style={{
-            padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600,
+            padding: '4px 12px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
             background: 'linear-gradient(135deg, var(--color-primary-lighter), #f0fdf4)',
-            color: 'var(--color-primary-dark)', border: '1px solid rgba(249,115,22,0.2)'
+            color: 'var(--color-primary-dark)', border: '1px solid rgba(249,115,22,0.2)',
           }}>{t}</span>
         ))}
       </div>
 
-      {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 24 }}>
         {tabs.map(t => {
           const Icon = t.icon
           return (
-            <button
-              key={t.id}
-              className={`tab ${activeTab === t.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(t.id)}
-              type="button"
-            >
+            <button key={t.id} className={`tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)} type="button">
               <Icon size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 5 }} />
               {t.label}
             </button>
@@ -214,82 +418,53 @@ export default function AgentStudio() {
         })}
       </div>
 
-      {/* Agent Graph Tab */}
       {activeTab === 'graph' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <GraphDemo />
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
-            {Object.values(AGENTS).map(agent => (
-              <div key={agent.name} className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: '1.5rem' }}>{agent.emoji}</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{agent.name}</div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.5 }}>{agent.desc}</p>
-              </div>
-            ))}
-          </div>
-
           <div className="card" style={{ background: '#0f172a', border: 'none', padding: '1.25rem' }}>
-            <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: '0.75rem', fontFamily: 'monospace' }}>
-              // LangGraph-style retry on synthesis failure
-            </div>
-            <pre style={{ color: '#e2e8f0', fontSize: '0.78rem', margin: 0, overflowX: 'auto', lineHeight: 1.7 }}>{`const result = await withRetry(
-  () => queryDocument({ question, chunks, agentMode: true }),
-  { maxAttempts: 3, baseDelayMs: 1000, label: 'synthesize' }
-)
-// State transition: SYNTHESIZING → RETRYING → SYNTHESIZING → DONE`}</pre>
+            <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: '0.75rem', fontFamily: 'monospace' }}>// AutoGen-enhanced agent graph with Critic + Semantic Memory</div>
+            <pre style={{ color: '#e2e8f0', fontSize: '0.75rem', margin: 0, overflowX: 'auto', lineHeight: 1.75 }}>{`const result = await runAgentGraph({ question, chunks, documentId }, onEvent)
+// Node flow:
+//  PLANNING → MEMORY_RECALL → RETRIEVING → ANALYZING → SYNTHESIZING → CRITIQUING → DONE
+//
+// AutoGen Bus: each agent emits structured HANDOFF messages to the next agent
+// Memory: recallMemory() enriches Synthesizer context with past answers  
+// Critic: scores answer on completeness, grounding, structure (0–100)
+// Post-run: storeMemory() saves learned knowledge for future sessions`}</pre>
           </div>
         </div>
       )}
 
-      {/* MCP Tools Tab */}
+      {activeTab === 'autogen' && <AutoGenChat />}
+
+      {activeTab === 'memory' && <MemoryInspector />}
+
       {activeTab === 'tools' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div className="card" style={{ padding: '1.25rem', background: '#f0fdf4', border: '1px solid rgba(16,185,129,0.2)' }}>
             <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Wrench size={16} /> MCP-Inspired Tool Registry
+              <Wrench size={16} /> MCP-Inspired Tool Registry — {tools.length} tools registered
             </div>
             <p style={{ fontSize: '0.85rem', color: '#047857', margin: 0, lineHeight: 1.6 }}>
-              Each tool below mirrors the Model Context Protocol pattern: a <code>name</code>, <code>description</code>,
-              typed <code>schema</code>, and an async <code>handler</code>. Agents call <code>executeTool(name, args)</code>
-              at runtime — swappable with real MCP servers (Brave Search, GitHub, Filesystem) via HTTP transport.
+              Each tool below mirrors the Model Context Protocol: <code>name</code>, <code>description</code>, typed <code>schema</code>, and an async <code>handler</code>.
+              Swap any handler with an HTTP call to a real MCP server (Brave Search, GitHub, Filesystem) with zero agent code changes.
             </p>
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
             {tools.map(tool => <ToolCard key={tool.name} tool={tool} />)}
           </div>
-
           <div className="card" style={{ background: '#0f172a', border: 'none', padding: '1.25rem' }}>
-            <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: '0.75rem', fontFamily: 'monospace' }}>
-              // Agent calls MCP tool at runtime
-            </div>
-            <pre style={{ color: '#e2e8f0', fontSize: '0.78rem', margin: 0, overflowX: 'auto', lineHeight: 1.7 }}>{`// MCP-style tool call (local) — pluggable with remote MCP server
-const result = await executeTool('searchChunks', {
-  chunks: doc.chunkList,
-  query: 'quarterly revenue growth',
-  topK: 8,
-})
-// → { chunks: [...], topScore: 4.2, totalSearched: 34 }`}</pre>
-          </div>
-
-          <div className="card" style={{ padding: '1rem', background: 'var(--color-primary-lighter)', border: '1px solid rgba(249,115,22,0.2)' }}>
-            <div style={{ fontWeight: 600, color: 'var(--color-primary-dark)', marginBottom: 6 }}>Real MCP Servers (integrable)</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {['Brave Search MCP', 'GitHub MCP', 'Filesystem MCP', 'PostgreSQL MCP', 'Slack MCP', 'Google Drive MCP'].map(s => (
-                <span key={s} style={{ padding: '4px 10px', background: 'white', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 6, fontSize: '0.75rem', color: '#7c3aed', fontWeight: 500 }}>
-                  {s}
-                </span>
-              ))}
-            </div>
-            <p style={{ fontSize: '0.78rem', color: 'var(--color-primary-dark)', margin: '10px 0 0', opacity: 0.8 }}>
-              Replace local tool handlers with HTTP calls to these MCP servers for live web search, file access, and database queries.
-            </p>
+            <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: '0.75rem', fontFamily: 'monospace' }}>// Parallel tool execution in nodeAnalyze</div>
+            <pre style={{ color: '#e2e8f0', fontSize: '0.75rem', margin: 0, overflowX: 'auto', lineHeight: 1.75 }}>{`const [factResult, sentimentResult] = await Promise.all([
+  executeTool('extractFacts',   { chunks: topChunks, question }),
+  executeTool('detectSentiment',{ chunks: topChunks }),
+])
+// → facts: [{text, relevance, chunkIndex}]
+// → sentiment: {sentiment, intensity, posScore, negScore}`}</pre>
           </div>
         </div>
       )}
 
-      {/* Tech Stack Tab */}
       {activeTab === 'stack' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {TECH_STACK.map(section => (
@@ -298,46 +473,37 @@ const result = await executeTool('searchChunks', {
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: section.color, display: 'inline-block' }} />
                 {section.category}
               </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 12 }}>
                 {section.items.map(item => (
-                  <div
-                    key={item.name}
-                    className="card"
-                    style={{ padding: '1rem', borderLeft: `3px solid ${section.color}`, background: section.bg }}
-                  >
+                  <div key={item.name} className="card" style={{ padding: '1rem', borderLeft: `3px solid ${section.color}`, background: section.bg }}>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a', marginBottom: 4 }}>{item.name}</div>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: section.color, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.role}</div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 600, color: section.color, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.role}</div>
                     <p style={{ fontSize: '0.78rem', color: '#475569', margin: 0, lineHeight: 1.55 }}>{item.desc}</p>
                   </div>
                 ))}
               </div>
             </div>
           ))}
-
           <div className="card" style={{ background: '#0f172a', border: 'none', padding: '1.5rem' }}>
-            <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: '0.75rem', fontFamily: 'monospace' }}>
-              architecture.yml — DocIntell AI Platform
-            </div>
-            <pre style={{ color: '#e2e8f0', fontSize: '0.74rem', margin: 0, overflowX: 'auto', lineHeight: 1.8 }}>{`Frontend (React/Vite) → Spring Cloud Gateway (port 8080)
-  ├── /auth/**     → auth-service     (port 8081) [Google OAuth2 + JWT]
-  ├── /docs/**     → document-service (port 8082) [Spring Batch upload pipeline]
-  ├── /batch/**    → batch-service    (port 8083) [Chunk/Embed jobs]
-  ├── /query/**    → query-service    (port 8084) [Gemini RAG endpoint]
-  ├── /feedback/** → feedback-service (port 8085) [Self-learning loop]
-  └── /analytics/**→ analytics-service(port 8086) [Metrics + trends]
-
-AI Layer:
-  queryDocument → [LangGraph graph] → Gemini 2.0 Flash API
-  MCP Tools: searchChunks · extractFacts · generateInsights
-  CrewAI Crew: Planner · Retriever · Analyst · Synthesizer`}</pre>
+            <pre style={{ color: '#e2e8f0', fontSize: '0.74rem', margin: 0, overflowX: 'auto', lineHeight: 1.8 }}>{`DocIntell AI Architecture (Client-Only Mode):
+┌─────────────────────────────────────────────────────────┐
+│  React 18 + Vite 6                                       │
+│  ┌──────────┐  ┌───────────┐  ┌──────────────────────┐ │
+│  │ Agent    │  │ Insight   │  │ Semantic Memory Store │ │
+│  │ Studio   │  │ Engine    │  │ (localStorage)        │ │
+│  └────┬─────┘  └─────┬─────┘  └──────────┬───────────┘ │
+│       │               │                   │              │
+│  ┌────▼───────────────▼───────────────────▼───────────┐ │
+│  │  Agent Graph: Plan→Memory→Retrieve→Analyze→         │ │
+│  │              Synthesize→Critique→Done               │ │
+│  └─────────────────────────┬───────────────────────────┘ │
+│                             │ Gemini 2.0 Flash API        │
+└─────────────────────────────┴───────────────────────────┘`}</pre>
           </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-      `}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
     </div>
   )
 }
