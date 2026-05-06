@@ -2,33 +2,34 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Upload, FolderOpen,
   MessageSquare, Brain, ThumbsUp, BarChart3,
-  Settings, LogOut, User, Cpu,
+  Settings, LogOut, User, Cpu, Sparkles,
 } from 'lucide-react'
 
 const navItems = [
   {
     section: 'MAIN',
     items: [
-      { to: '/app', label: 'Dashboard', icon: LayoutDashboard },
-      { to: '/app/upload', label: 'Upload & Process', icon: Upload },
-      { to: '/app/documents', label: 'My Documents', icon: FolderOpen },
+      { to: '/app',           label: 'Dashboard',       icon: LayoutDashboard },
+      { to: '/app/upload',    label: 'Upload & Process', icon: Upload },
+      { to: '/app/documents', label: 'My Documents',     icon: FolderOpen },
     ]
   },
   {
     section: 'AI',
     items: [
-      { to: '/app/chat', label: 'AI Chat', icon: MessageSquare },
-      { to: '/app/agent', label: 'Agent Studio', icon: Cpu, badge: 'NEW' },
-      { to: '/app/reasoning', label: 'Reasoning View', icon: Brain },
-      { to: '/app/feedback', label: 'Feedback', icon: ThumbsUp },
+      { to: '/app/chat',     label: 'AI Chat',        icon: MessageSquare },
+      { to: '/app/insights', label: 'Insight Engine', icon: Sparkles, badge: 'NEW', badgeColor: '#6366f1' },
+      { to: '/app/agent',    label: 'Agent Studio',   icon: Cpu,      badge: 'PRO', badgeColor: '#f97316' },
+      { to: '/app/reasoning',label: 'Reasoning View', icon: Brain },
+      { to: '/app/feedback', label: 'Feedback',       icon: ThumbsUp },
     ]
   },
   {
     section: 'SYSTEM',
     items: [
       { to: '/app/analytics', label: 'My Analytics', icon: BarChart3 },
-      { to: '/app/profile', label: 'Profile', icon: User },
-      { to: '/app/settings', label: 'Settings', icon: Settings },
+      { to: '/app/profile',   label: 'Profile',       icon: User },
+      { to: '/app/settings',  label: 'Settings',      icon: Settings },
     ]
   }
 ]
@@ -73,10 +74,10 @@ export default function UserSidebar({ onLogout, isOpen = false, onNavigate = () 
                   <span>{item.label}</span>
                   {item.badge && (
                     <span style={{
-                      marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 700,
-                      padding: '2px 6px', borderRadius: 10,
-                      background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                      color: 'white', letterSpacing: '0.04em'
+                      marginLeft: 'auto', fontSize: '0.58rem', fontWeight: 700,
+                      padding: '2px 7px', borderRadius: 10,
+                      background: item.badgeColor || '#6366f1',
+                      color: 'white', letterSpacing: '0.05em',
                     }}>
                       {item.badge}
                     </span>
