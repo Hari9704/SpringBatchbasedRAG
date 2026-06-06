@@ -178,6 +178,7 @@ export async function triggerBatch(documentId) {
       currentStep: 'Re-chunking from stored content',
       retryCount: 0,
       pipelineStartedAt,
+      pipelineCompletedAt: null,
       stepTimings: { CHUNKING: { startedAt: pipelineStartedAt } },
     })
     await sleep(400)
