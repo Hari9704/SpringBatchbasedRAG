@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, FileText, CheckCircle, Loader, AlertCircle, ArrowRight } from 'lucide-react'
+import { Upload, FileText, CheckCircle, Loader, AlertCircle, ArrowRight, Clock } from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
 
 const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
@@ -60,6 +60,20 @@ function formatStatus(status) {
   return String(status).toLowerCase().replace(/_/g, ' ')
 }
 
+function formatDuration(ms) {
+  if (ms == null || ms < 0) return null
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function formatElapsed(startedAt, now) {
+  if (!startedAt) return null
+  const ms = now - startedAt
+  if (ms < 0) return null
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
 function getStepState(stepKey, documentStatus) {
   if (documentStatus === 'FAILED') {
     return 'pending'
@@ -91,6 +105,7 @@ export default function UserUpload() {
   const [submitting, setSubmitting] = useState(false)
   const [notice, setNotice] = useState('')
   const [pageError, setPageError] = useState('')
+  const [now, setNow] = useState(() => Date.now())
 
   const {
     documents,
@@ -116,7 +131,29 @@ export default function UserUpload() {
     return documents[0] || null
   }, [documents])
 
+  const isActivelyProcessing = activeDocument && PROCESSING_STATUSES.has(activeDocument.status)
+
+  useEffect(() => {
+    if (!isActivelyProcessing) return undefined
+    const id = window.setInterval(() => setNow(Date.now()), 100)
+    return () => window.clearInterval(id)
+  }, [isActivelyProcessing])
+
   const activeJob = activeDocument ? latestJobsByDocumentId[activeDocument.id] : null
+
+  const stepTimings = activeDocument?.stepTimings || {}
+  const pipelineStartedAt = activeDocument?.pipelineStartedAt || null
+  const pipelineCompletedAt = activeDocument?.pipelineCompletedAt || null
+
+  const pipelineDuration = useMemo(() => {
+    if (pipelineCompletedAt && pipelineStartedAt) {
+      return formatDuration(pipelineCompletedAt - pipelineStartedAt)
+    }
+    if (isActivelyProcessing && pipelineStartedAt) {
+      return formatElapsed(pipelineStartedAt, now)
+    }
+    return null
+  }, [pipelineCompletedAt, pipelineStartedAt, isActivelyProcessing, now])
 
   const handleFiles = async (fileList) => {
     if (!fileList.length) {
@@ -253,7 +290,15 @@ export default function UserUpload() {
         </div>
 
         <div className="card">
-          <div className="card-title">Processing Pipeline</div>
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <span>Processing Pipeline</span>
+            {pipelineDuration ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                <Clock size={12} />
+                {isActivelyProcessing ? `${pipelineDuration} elapsed` : `Completed in ${pipelineDuration}`}
+              </span>
+            ) : null}
+          </div>
           {!activeDocument ? (
             <div className="empty-state compact">
               <Upload size={28} />
@@ -273,14 +318,35 @@ export default function UserUpload() {
                   const isDone = state === 'done'
                   const isCurrent = state === 'current'
 
+                  const timing = stepTimings[step.key]
+                  const stepDuration = timing?.completedAt && timing?.startedAt
+                    ? formatDuration(timing.completedAt - timing.startedAt)
+                    : null
+                  const stepElapsed = isCurrent && timing?.startedAt
+                    ? formatElapsed(timing.startedAt, now)
+                    : null
+
                   return (
                     <div className="timeline-item" key={step.key}>
                       <div className={`timeline-dot ${isDone ? 'done' : isCurrent ? 'current' : 'inactive'}`}></div>
                       <div className="timeline-content">
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                           <strong>Step {index + 1}: {step.label}</strong>
-                          {isDone ? <span className="badge badge-success"><CheckCircle size={12} /> Done</span> : null}
-                          {isCurrent ? <span className="badge badge-processing"><Loader size={12} className="spin" /> Running</span> : null}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            {isDone && stepDuration ? (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                                <Clock size={10} />
+                                {stepDuration}
+                              </span>
+                            ) : null}
+                            {isDone ? <span className="badge badge-success"><CheckCircle size={12} /> Done</span> : null}
+                            {isCurrent ? (
+                              <span className="badge badge-processing">
+                                <Loader size={12} className="spin" />
+                                {stepElapsed ? stepElapsed : 'Running'}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         <div className="inline-muted" style={{ marginTop: 4 }}>{step.description}</div>
                       </div>

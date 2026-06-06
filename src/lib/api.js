@@ -94,9 +94,16 @@ async function processDocument(id, file) {
     { status: 'EMBEDDING',  step: 'Generating vector embeddings',         delay: 800 },
   ]
 
+  const stepTimings = {}
+  const pipelineStartedAt = Date.now()
+
   for (const { status, step, delay } of steps) {
+    const startedAt = Date.now()
+    stepTimings[status] = { startedAt }
+    upsertDoc({ id, status, currentStep: step, jobStatus: 'RUNNING', stepTimings: { ...stepTimings }, pipelineStartedAt })
     await sleep(delay)
-    upsertDoc({ id, status, currentStep: step, jobStatus: 'RUNNING' })
+    stepTimings[status] = { startedAt, completedAt: Date.now() }
+    upsertDoc({ id, stepTimings: { ...stepTimings } })
   }
 
   const rawContent = await extractText(file)
@@ -113,6 +120,9 @@ async function processDocument(id, file) {
     jobStatus: 'COMPLETED',
     currentStep: 'Ready',
     retryCount: 0,
+    stepTimings: { ...stepTimings },
+    pipelineStartedAt,
+    pipelineCompletedAt: Date.now(),
   })
 }
 
