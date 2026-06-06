@@ -14,6 +14,41 @@ import { queryDocument } from './gemini'
 
 export const DEFAULT_USER_ID = 1
 
+/**
+ * Base URL for the Spring Boot query-service backend (port 8084).
+ * Set VITE_API_BASE_URL=http://localhost:8084 to enable real vector search.
+ * When unset the app runs fully client-side with local keyword scoring.
+ */
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || null
+
+/**
+ * Returns true when the backend RAG endpoint is configured.
+ */
+export function isBackendAvailable() {
+  return !!API_BASE_URL
+}
+
+/**
+ * Calls the Spring Boot query-service RAG endpoint.
+ * POST {API_BASE_URL}/api/query
+ * Returns { queryId, answer, confidence, sources, reasoning, reasoningSteps }
+ *
+ * @param {{ documentId: number|null, question: string, reasoning?: boolean, userId?: number }} opts
+ */
+export async function backendRagQuery({ documentId, question, reasoning = false, userId = DEFAULT_USER_ID }) {
+  if (!API_BASE_URL) throw new Error('VITE_API_BASE_URL is not configured — backend RAG is unavailable')
+  const response = await fetch(`${API_BASE_URL}/api/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, documentId, question, reasoning }),
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => `HTTP ${response.status}`)
+    throw new Error(`Backend RAG query failed (${response.status}): ${text}`)
+  }
+  return response.json()
+}
+
 export async function fetchDocuments() {
   return getDocs().map(d => ({ ...d, chunkList: undefined, rawContent: undefined }))
 }
@@ -167,15 +202,30 @@ export async function runQuery({ userId, documentId, question, reasoning, agentM
   if (doc.status !== 'PROCESSED') throw new Error('Document is not ready yet. Please wait for processing to complete.')
   if (!doc.chunkList?.length) throw new Error('Document has no content chunks. Please reprocess the document.')
 
-  const result = await queryDocument({
-    question,
-    documentId,
-    documentName: doc.name,
-    chunks: doc.chunkList,
-    reasoning,
-    agentMode,
-    onStep,
-  })
+  let result
+
+  if (API_BASE_URL) {
+    onStep?.({ label: `Calling backend RAG endpoint (${API_BASE_URL}/api/query)…` })
+    const backendResp = await backendRagQuery({ documentId, question, reasoning, userId: userId ?? DEFAULT_USER_ID })
+    result = {
+      answer: backendResp.answer,
+      confidence: backendResp.confidence ?? 90,
+      sources: backendResp.sources ?? [],
+      model: 'backend/spring-ai',
+      queryId: backendResp.queryId,
+    }
+    onStep?.({ label: `Backend answered (confidence: ${result.confidence}%)` })
+  } else {
+    result = await queryDocument({
+      question,
+      documentId,
+      documentName: doc.name,
+      chunks: doc.chunkList,
+      reasoning,
+      agentMode,
+      onStep,
+    })
+  }
 
   addQuery({
     documentId,

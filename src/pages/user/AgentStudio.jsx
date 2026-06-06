@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Cpu, GitBranch, Wrench, Layers, Zap, RefreshCw, CheckCircle, Clock, ArrowRight, ExternalLink } from 'lucide-react'
+import { Cpu, GitBranch, Wrench, Layers, Zap, RefreshCw, CheckCircle, Clock, ArrowRight, ExternalLink, Server, Wifi, WifiOff } from 'lucide-react'
 import { AGENTS, AGENT_STATES } from '../../lib/agent'
 import { listTools } from '../../lib/tools'
+import { isBackendAvailable, API_BASE_URL } from '../../lib/api'
 
 const TECH_STACK = [
   {
@@ -175,6 +176,8 @@ export default function AgentStudio() {
     { id: 'stack', label: 'Tech Stack', icon: Layers },
   ]
 
+  const backendConnected = isBackendAvailable()
+
   return (
     <div className="animate-fade-in" style={{ maxWidth: 1100 }}>
       <div className="page-header">
@@ -183,6 +186,43 @@ export default function AgentStudio() {
           Agent Studio
         </h1>
         <p>Visualize the agentic pipeline, MCP tool registry, and full tech stack powering DocIntell AI.</p>
+      </div>
+
+      {/* Backend connection status banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+        borderRadius: 10, marginBottom: 20,
+        background: backendConnected ? '#f0fdf4' : '#fafafa',
+        border: `1px solid ${backendConnected ? 'rgba(16,185,129,0.3)' : '#e2e8f0'}`,
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 30, height: 30, borderRadius: 8,
+          background: backendConnected ? '#dcfce7' : '#f1f5f9',
+        }}>
+          {backendConnected
+            ? <Server size={15} color="#16a34a" />
+            : <Server size={15} color="#94a3b8" />}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: backendConnected ? '#15803d' : '#64748b' }}>
+              {backendConnected ? 'Backend Connected — Real Vector Search Active' : 'Backend Offline — Local Keyword Scoring Active'}
+            </span>
+            <span style={{
+              padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700,
+              background: backendConnected ? '#16a34a' : '#94a3b8', color: 'white',
+            }}>
+              {backendConnected ? 'LIVE' : 'LOCAL'}
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
+            {backendConnected
+              ? <>Retriever and Analyst agents call <code style={{ fontSize: '0.72rem' }}>{API_BASE_URL}/api/query</code> (Spring AI + pgvector) instead of the local keyword scorer.</>
+              : <>Set <code style={{ fontSize: '0.72rem' }}>VITE_API_BASE_URL=http://localhost:8084</code> and start the query-service to enable real vector similarity search.</>}
+          </p>
+        </div>
+        {backendConnected ? <Wifi size={16} color="#16a34a" /> : <WifiOff size={16} color="#94a3b8" />}
       </div>
 
       {/* Tech badge strip */}
@@ -262,15 +302,17 @@ export default function AgentStudio() {
 
           <div className="card" style={{ background: '#0f172a', border: 'none', padding: '1.25rem' }}>
             <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: '0.75rem', fontFamily: 'monospace' }}>
-              // Agent calls MCP tool at runtime
+              // Agent calls MCP tool at runtime (backend-aware)
             </div>
-            <pre style={{ color: '#e2e8f0', fontSize: '0.78rem', margin: 0, overflowX: 'auto', lineHeight: 1.7 }}>{`// MCP-style tool call (local) — pluggable with remote MCP server
+            <pre style={{ color: '#e2e8f0', fontSize: '0.78rem', margin: 0, overflowX: 'auto', lineHeight: 1.7 }}>{`// searchChunks auto-routes to backend when VITE_API_BASE_URL is set
 const result = await executeTool('searchChunks', {
-  chunks: doc.chunkList,
+  chunks: doc.chunkList,   // used only in local-keyword mode
   query: 'quarterly revenue growth',
+  documentId: doc.id,      // sent to backend for vector filter
   topK: 8,
 })
-// → { chunks: [...], topScore: 4.2, totalSearched: 34 }`}</pre>
+// Backend mode  → { chunks: [...], source: 'backend-vector', backendConfidence: 90 }
+// Local mode    → { chunks: [...], source: 'local-keyword',  topScore: 4.2 }`}</pre>
           </div>
 
           <div className="card" style={{ padding: '1rem', background: 'var(--color-primary-lighter)', border: '1px solid rgba(249,115,22,0.2)' }}>

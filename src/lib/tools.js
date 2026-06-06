@@ -7,7 +7,12 @@
  *
  * This makes the AI's capabilities modular, composable, and auditable —
  * the same principle behind real MCP servers (Brave, GitHub, Filesystem, etc.)
+ *
+ * Backend mode: when VITE_API_BASE_URL is set, searchChunks delegates to the
+ * Spring Boot query-service vector search instead of the local keyword scorer.
  */
+
+import { isBackendAvailable, backendRagQuery } from './api'
 
 // ─── Tool Definitions ──────────────────────────────────────────────────────────
 
@@ -15,14 +20,33 @@ export const TOOLS = {
 
   searchChunks: {
     name: 'searchChunks',
-    description: 'Semantic keyword search across document chunks. Returns the most relevant chunks ranked by score.',
+    description: 'Vector similarity search (backend) or keyword search (local) across document chunks. Returns the most relevant chunks ranked by score.',
     schema: {
       chunks: 'DocumentChunk[]',
       query: 'string',
       keywords: 'string[]',
       topK: 'number',
+      documentId: 'number?',
     },
-    async handler({ chunks, query, keywords = [], topK = 8 }) {
+    async handler({ chunks, query, keywords = [], topK = 8, documentId }) {
+      if (isBackendAvailable()) {
+        const result = await backendRagQuery({ documentId, question: query })
+        const sources = result.sources || []
+        const mappedChunks = sources.slice(0, topK).map((s, i) => ({
+          text: s.chunk || '',
+          index: typeof s.chunkIndex === 'number' ? s.chunkIndex : i,
+          score: s.relevance === 'High' ? 1 : 0.5,
+          documentId: s.documentId,
+        }))
+        return {
+          chunks: mappedChunks,
+          topScore: mappedChunks[0]?.score || 0,
+          totalSearched: sources.length,
+          backendConfidence: result.confidence,
+          source: 'backend-vector',
+        }
+      }
+
       const allWords = [
         ...query.toLowerCase().split(/\W+/).filter(w => w.length > 3),
         ...keywords.map(k => k.toLowerCase()),
@@ -41,6 +65,7 @@ export const TOOLS = {
         chunks: top,
         topScore: top[0]?.score || 0,
         totalSearched: chunks.length,
+        source: 'local-keyword',
       }
     },
   },

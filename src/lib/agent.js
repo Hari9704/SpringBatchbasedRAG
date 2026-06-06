@@ -10,6 +10,7 @@
 
 import { withRetry } from './gemini'
 import { TOOLS, executeTool } from './tools'
+import { isBackendAvailable, backendRagQuery } from './api'
 
 // ─── State Machine ─────────────────────────────────────────────────────────────
 
@@ -59,19 +60,44 @@ async function nodePlan(ctx) {
 }
 
 async function nodeRetrieve(ctx) {
-  ctx.emit({ state: AGENT_STATES.RETRIEVING, agent: AGENTS.RETRIEVER,
-    message: `Searching document chunks with MCP tool: searchChunks…` })
+  if (isBackendAvailable()) {
+    ctx.emit({ state: AGENT_STATES.RETRIEVING, agent: AGENTS.RETRIEVER,
+      message: `Calling backend vector search (Spring AI / pgvector) at ${import.meta.env.VITE_API_BASE_URL}/api/query…` })
 
-  const result = await executeTool('searchChunks', {
-    chunks: ctx.chunks,
-    query: ctx.question,
-    keywords: ctx.plan?.keywords || [],
-    topK: 8,
-  })
+    const backendResult = await backendRagQuery({
+      documentId: ctx.documentId,
+      question: ctx.question,
+      reasoning: ctx.reasoning || false,
+    })
 
-  ctx.topChunks = result.chunks
-  ctx.emit({ state: AGENT_STATES.RETRIEVING, agent: AGENTS.RETRIEVER,
-    message: `Retrieved ${result.chunks.length} relevant chunks (top score: ${result.topScore})` })
+    ctx.backendResult = backendResult
+
+    const sources = backendResult.sources || []
+    ctx.topChunks = sources.map((s, i) => ({
+      text: s.chunk || '',
+      index: typeof s.chunkIndex === 'number' ? s.chunkIndex : i,
+      score: s.relevance === 'High' ? 1 : 0.5,
+      documentId: s.documentId,
+    }))
+
+    ctx.emit({ state: AGENT_STATES.RETRIEVING, agent: AGENTS.RETRIEVER,
+      message: `Backend vector search complete — ${sources.length} semantically similar chunk(s) retrieved (confidence: ${backendResult.confidence}%)` })
+  } else {
+    ctx.emit({ state: AGENT_STATES.RETRIEVING, agent: AGENTS.RETRIEVER,
+      message: `Searching document chunks with MCP tool: searchChunks (local keyword scorer)…` })
+
+    const result = await executeTool('searchChunks', {
+      chunks: ctx.chunks,
+      query: ctx.question,
+      keywords: ctx.plan?.keywords || [],
+      topK: 8,
+    })
+
+    ctx.topChunks = result.chunks
+    ctx.emit({ state: AGENT_STATES.RETRIEVING, agent: AGENTS.RETRIEVER,
+      message: `Retrieved ${result.chunks.length} relevant chunks via local scorer (top score: ${result.topScore})` })
+  }
+
   return 'ANALYZING'
 }
 
@@ -91,6 +117,28 @@ async function nodeAnalyze(ctx) {
 }
 
 async function nodeSynthesize(ctx) {
+  if (ctx.backendResult) {
+    ctx.emit({ state: AGENT_STATES.SYNTHESIZING, agent: AGENTS.SYNTHESIZER,
+      message: `Using backend RAG answer (Spring AI + Gemini on server) — skipping duplicate client-side LLM call…` })
+
+    ctx.result = {
+      answer: ctx.backendResult.answer,
+      confidence: ctx.backendResult.confidence ?? 90,
+      sources: (ctx.backendResult.sources || []).map(s => ({
+        documentId: s.documentId,
+        chunkIndex: s.chunkIndex,
+        chunk: s.chunk,
+        relevance: s.relevance,
+      })),
+      model: 'backend/spring-ai',
+      queryId: ctx.backendResult.queryId,
+    }
+
+    ctx.emit({ state: AGENT_STATES.SYNTHESIZING, agent: AGENTS.SYNTHESIZER,
+      message: `Answer delivered from backend RAG pipeline (confidence: ${ctx.result.confidence}%)` })
+    return 'DONE'
+  }
+
   ctx.emit({ state: AGENT_STATES.SYNTHESIZING, agent: AGENTS.SYNTHESIZER,
     message: `Calling Gemini API to synthesize the final answer…` })
 
