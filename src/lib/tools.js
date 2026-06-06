@@ -29,7 +29,7 @@ export const TOOLS = {
       documentId: 'number?',
     },
     async handler({ chunks, query, keywords = [], topK = 8, documentId }) {
-      if (isBackendAvailable()) {
+      if (isBackendAvailable() && documentId != null) {
         const result = await backendRagQuery({ documentId, question: query })
         const sources = result.sources || []
         const mappedChunks = sources.slice(0, topK).map((s, i) => ({

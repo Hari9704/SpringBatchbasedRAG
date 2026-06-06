@@ -2,41 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, Search, Trash2, RefreshCw, MessageSquare, CheckCircle, Loader, AlertCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
+import { PIPELINE_STEPS, formatDuration, getStepState } from '../../lib/pipelineUtils'
 
 const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
-
-const PIPELINE_STEPS = [
-  {
-    key: 'VALIDATING',
-    label: 'Validating upload',
-    description: 'Checking file type, size, and storage metadata.',
-  },
-  {
-    key: 'EXTRACTING',
-    label: 'Extracting text',
-    description: 'Reading document text from the uploaded file.',
-  },
-  {
-    key: 'CLEANING',
-    label: 'Cleaning content',
-    description: 'Normalizing extracted text before chunking.',
-  },
-  {
-    key: 'CHUNKING',
-    label: 'Chunking content',
-    description: 'Splitting the document into semantic chunks.',
-  },
-  {
-    key: 'EMBEDDING',
-    label: 'Generating embeddings',
-    description: 'Writing vector embeddings for retrieval.',
-  },
-  {
-    key: 'PROCESSED',
-    label: 'Ready for chat',
-    description: 'This document can now be queried in AI Chat.',
-  },
-]
 
 function formatBytes(sizeBytes) {
   if (!sizeBytes) {
@@ -63,35 +31,6 @@ function formatTimestamp(dateText) {
   return new Date(dateText).toLocaleString()
 }
 
-function formatDuration(ms) {
-  if (ms == null || ms < 0) return null
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
-function getStepState(stepKey, documentStatus) {
-  if (documentStatus === 'FAILED') {
-    return 'pending'
-  }
-
-  const normalizedStatus = documentStatus === 'UPLOADED' ? 'VALIDATING' : documentStatus
-  const currentIndex = PIPELINE_STEPS.findIndex((step) => step.key === normalizedStatus)
-  const stepIndex = PIPELINE_STEPS.findIndex((step) => step.key === stepKey)
-
-  if (documentStatus === 'PROCESSED' && stepKey === 'PROCESSED') {
-    return 'done'
-  }
-
-  if (stepIndex < currentIndex) {
-    return 'done'
-  }
-
-  if (stepIndex === currentIndex) {
-    return 'current'
-  }
-
-  return 'pending'
-}
 
 function PipelineHistory({ document }) {
   const stepTimings = document.stepTimings || {}

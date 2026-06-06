@@ -129,6 +129,7 @@ async function nodeSynthesize(ctx) {
         chunkIndex: s.chunkIndex,
         chunk: s.chunk,
         relevance: s.relevance,
+        preview: typeof s.chunk === 'string' ? s.chunk.slice(0, 120) : '',
       })),
       model: 'backend/spring-ai',
       queryId: ctx.backendResult.queryId,

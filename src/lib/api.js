@@ -170,10 +170,20 @@ export async function triggerBatch(documentId) {
 
   // If we have raw content + chunks from a prior run, rebuild from stored data
   if (doc.rawContent && doc.rawContent.length > 20) {
-    upsertDoc({ id: documentId, status: 'CHUNKING', jobStatus: 'RUNNING', currentStep: 'Re-chunking from stored content', retryCount: 0 })
+    const pipelineStartedAt = Date.now()
+    upsertDoc({
+      id: documentId,
+      status: 'CHUNKING',
+      jobStatus: 'RUNNING',
+      currentStep: 'Re-chunking from stored content',
+      retryCount: 0,
+      pipelineStartedAt,
+      stepTimings: { CHUNKING: { startedAt: pipelineStartedAt } },
+    })
     await sleep(400)
     const { chunkText } = await import('./fileReader')
     const chunkList = chunkText(doc.rawContent)
+    const pipelineCompletedAt = Date.now()
     upsertDoc({
       id: documentId,
       status: 'PROCESSED',
@@ -183,6 +193,9 @@ export async function triggerBatch(documentId) {
       jobStatus: 'COMPLETED',
       currentStep: 'Ready',
       retryCount: 0,
+      pipelineStartedAt,
+      pipelineCompletedAt,
+      stepTimings: { CHUNKING: { startedAt: pipelineStartedAt, completedAt: pipelineCompletedAt } },
     })
     return { message: 'Reprocessed from stored content' }
   }

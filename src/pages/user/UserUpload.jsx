@@ -2,41 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, FileText, CheckCircle, Loader, AlertCircle, ArrowRight, Clock } from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
+import { PIPELINE_STEPS, formatDuration, formatElapsed, getStepState } from '../../lib/pipelineUtils'
 
 const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
-
-const PIPELINE_STEPS = [
-  {
-    key: 'VALIDATING',
-    label: 'Validating upload',
-    description: 'Checking file type, size, and storage metadata.',
-  },
-  {
-    key: 'EXTRACTING',
-    label: 'Extracting text',
-    description: 'Reading document text from the uploaded file.',
-  },
-  {
-    key: 'CLEANING',
-    label: 'Cleaning content',
-    description: 'Normalizing extracted text before chunking.',
-  },
-  {
-    key: 'CHUNKING',
-    label: 'Chunking content',
-    description: 'Splitting the document into semantic chunks.',
-  },
-  {
-    key: 'EMBEDDING',
-    label: 'Generating embeddings',
-    description: 'Writing vector embeddings for retrieval.',
-  },
-  {
-    key: 'PROCESSED',
-    label: 'Ready for chat',
-    description: 'This document can now be queried in AI Chat.',
-  },
-]
 
 const STATUS_STYLES = {
   PROCESSED: 'badge-success',
@@ -60,43 +28,6 @@ function formatStatus(status) {
   return String(status).toLowerCase().replace(/_/g, ' ')
 }
 
-function formatDuration(ms) {
-  if (ms == null || ms < 0) return null
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
-function formatElapsed(startedAt, now) {
-  if (!startedAt) return null
-  const ms = now - startedAt
-  if (ms < 0) return null
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
-function getStepState(stepKey, documentStatus) {
-  if (documentStatus === 'FAILED') {
-    return 'pending'
-  }
-
-  const normalizedStatus = documentStatus === 'UPLOADED' ? 'VALIDATING' : documentStatus
-  const currentIndex = PIPELINE_STEPS.findIndex((step) => step.key === normalizedStatus)
-  const stepIndex = PIPELINE_STEPS.findIndex((step) => step.key === stepKey)
-
-  if (documentStatus === 'PROCESSED' && stepKey === 'PROCESSED') {
-    return 'done'
-  }
-
-  if (stepIndex < currentIndex) {
-    return 'done'
-  }
-
-  if (stepIndex === currentIndex) {
-    return 'current'
-  }
-
-  return 'pending'
-}
 
 export default function UserUpload() {
   const navigate = useNavigate()
