@@ -83,7 +83,7 @@ export default function UserDashboard() {
     {
       label: 'Avg. Confidence',
       value: queryHistory.length
-        ? `${Math.round(queryHistory.reduce((sum, item) => sum + item.confidenceScore, 0) / queryHistory.length)}%`
+        ? `${Math.round(queryHistory.reduce((sum, item) => sum + (Number(item.confidenceScore) || 0), 0) / queryHistory.length)}%`
         : '--',
       sub: queryHistory.length ? 'Across recent answers' : 'Run a chat to measure confidence',
       icon: Zap,

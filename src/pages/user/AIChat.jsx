@@ -100,7 +100,7 @@ export default function AIChat() {
   useEffect(() => { setMessages([]); setInput(''); setChatError(''); setLiveTrace([]) }, [currentDocument?.id])
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, sending, liveTrace])
 
-  const settings = getSettings()
+  const settings = useMemo(() => getSettings(), [sending])
   const hasApiKey = Boolean(settings.apiKey)
 
   const handleSend = useCallback(async () => {

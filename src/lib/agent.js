@@ -171,8 +171,8 @@ export async function runAgentGraph(input, onEvent) {
           message: `Error in ${currentNode}: ${err.message} — retrying (${attempts}/${MAX_RETRIES})…`,
         })
         await delay(1000 * attempts)
-        // Restart from retrieve if synthesis failed, else from start
-        currentNode = currentNode === 'SYNTHESIZING' ? 'SYNTHESIZING' : 'PLANNING'
+        // Retry the same node that failed (don't restart the whole graph)
+        // currentNode is unchanged — loop continues with same node
       } else {
         ctx.emit({ state: AGENT_STATES.ERROR, message: err.message })
         throw err

@@ -122,9 +122,28 @@ export async function triggerBatch(documentId) {
   const doc = getDoc(documentId)
   if (!doc) throw new Error(`Document ${documentId} not found`)
   if (doc.status === 'PROCESSED') return { message: 'Already processed' }
-  const file = doc._file
-  upsertDoc({ id: documentId, status: 'VALIDATING', jobStatus: 'STARTED', currentStep: 'Re-queued', retryCount: 0 })
-  return { message: 'Batch triggered' }
+
+  // If we have raw content + chunks from a prior run, rebuild from stored data
+  if (doc.rawContent && doc.rawContent.length > 20) {
+    upsertDoc({ id: documentId, status: 'CHUNKING', jobStatus: 'RUNNING', currentStep: 'Re-chunking from stored content', retryCount: 0 })
+    await sleep(400)
+    const { chunkText } = await import('./fileReader')
+    const chunkList = chunkText(doc.rawContent)
+    upsertDoc({
+      id: documentId,
+      status: 'PROCESSED',
+      chunks: chunkList.length,
+      chunkList,
+      processedDate: new Date().toISOString(),
+      jobStatus: 'COMPLETED',
+      currentStep: 'Ready',
+      retryCount: 0,
+    })
+    return { message: 'Reprocessed from stored content' }
+  }
+
+  // No file or content available — can't reprocess without re-upload
+  throw new Error('Original file not available. Please delete this document and re-upload it to reprocess.')
 }
 
 export async function deleteDocument(documentId) {

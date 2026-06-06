@@ -109,7 +109,7 @@ export default function UserAnalytics() {
     const run = async () => {
       try {
         const [history, feedback, stats, qStats] = await Promise.all([
-          fetchQueryHistory(DEFAULT_USER_ID),
+          fetchQueryHistory(),
           fetchFeedback().catch(() => []),
           fetchDocumentStats(DEFAULT_USER_ID),
           fetchQueryStats(DEFAULT_USER_ID),

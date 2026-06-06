@@ -222,7 +222,7 @@ export default function UserSettings() {
                   className="btn btn-secondary btn-sm"
                   type="button"
                   onClick={handleTestKey}
-                  disabled={!apiKey || testing}
+                  disabled={(!apiKey && !isPreconfigured) || testing}
                   style={{ whiteSpace: 'nowrap' }}
                 >
                   {testing ? <><span className="spin" style={{ display: 'inline-block' }}>⟳</span> Testing…</> : 'Test Key'}
