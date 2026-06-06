@@ -1,9 +1,42 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Search, Trash2, RefreshCw, MessageSquare, CheckCircle, Loader, AlertCircle } from 'lucide-react'
+import { FileText, Search, Trash2, RefreshCw, MessageSquare, CheckCircle, Loader, AlertCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 import { useUserWorkspace } from '../../context/UserWorkspaceContext'
 
 const PROCESSING_STATUSES = new Set(['UPLOADED', 'VALIDATING', 'EXTRACTING', 'CLEANING', 'CHUNKING', 'EMBEDDING'])
+
+const PIPELINE_STEPS = [
+  {
+    key: 'VALIDATING',
+    label: 'Validating upload',
+    description: 'Checking file type, size, and storage metadata.',
+  },
+  {
+    key: 'EXTRACTING',
+    label: 'Extracting text',
+    description: 'Reading document text from the uploaded file.',
+  },
+  {
+    key: 'CLEANING',
+    label: 'Cleaning content',
+    description: 'Normalizing extracted text before chunking.',
+  },
+  {
+    key: 'CHUNKING',
+    label: 'Chunking content',
+    description: 'Splitting the document into semantic chunks.',
+  },
+  {
+    key: 'EMBEDDING',
+    label: 'Generating embeddings',
+    description: 'Writing vector embeddings for retrieval.',
+  },
+  {
+    key: 'PROCESSED',
+    label: 'Ready for chat',
+    description: 'This document can now be queried in AI Chat.',
+  },
+]
 
 function formatBytes(sizeBytes) {
   if (!sizeBytes) {
@@ -30,12 +63,112 @@ function formatTimestamp(dateText) {
   return new Date(dateText).toLocaleString()
 }
 
+function formatDuration(ms) {
+  if (ms == null || ms < 0) return null
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function getStepState(stepKey, documentStatus) {
+  if (documentStatus === 'FAILED') {
+    return 'pending'
+  }
+
+  const normalizedStatus = documentStatus === 'UPLOADED' ? 'VALIDATING' : documentStatus
+  const currentIndex = PIPELINE_STEPS.findIndex((step) => step.key === normalizedStatus)
+  const stepIndex = PIPELINE_STEPS.findIndex((step) => step.key === stepKey)
+
+  if (documentStatus === 'PROCESSED' && stepKey === 'PROCESSED') {
+    return 'done'
+  }
+
+  if (stepIndex < currentIndex) {
+    return 'done'
+  }
+
+  if (stepIndex === currentIndex) {
+    return 'current'
+  }
+
+  return 'pending'
+}
+
+function PipelineHistory({ document }) {
+  const stepTimings = document.stepTimings || {}
+  const pipelineStartedAt = document.pipelineStartedAt || null
+  const pipelineCompletedAt = document.pipelineCompletedAt || null
+
+  const hasAnyTiming = Object.keys(stepTimings).length > 0 || pipelineStartedAt
+
+  if (!hasAnyTiming) {
+    return (
+      <div className="inline-muted" style={{ fontSize: 'var(--font-size-sm)', textAlign: 'center', padding: 'var(--spacing-md) 0' }}>
+        No pipeline timing data recorded for this document.
+      </div>
+    )
+  }
+
+  const totalDuration = pipelineCompletedAt && pipelineStartedAt
+    ? formatDuration(pipelineCompletedAt - pipelineStartedAt)
+    : null
+
+  return (
+    <div>
+      {totalDuration ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 'var(--spacing-md)' }}>
+          <Clock size={12} />
+          Completed in {totalDuration}
+        </div>
+      ) : null}
+
+      <div className="timeline">
+        {PIPELINE_STEPS.map((step, index) => {
+          const state = getStepState(step.key, document.status)
+          const isDone = state === 'done'
+          const isCurrent = state === 'current'
+
+          const timing = stepTimings[step.key]
+          const stepDuration = timing?.completedAt && timing?.startedAt
+            ? formatDuration(timing.completedAt - timing.startedAt)
+            : null
+
+          return (
+            <div className="timeline-item" key={step.key}>
+              <div className={`timeline-dot ${isDone ? 'done' : isCurrent ? 'current' : 'inactive'}`}></div>
+              <div className="timeline-content">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <strong style={{ fontSize: 'var(--font-size-sm)' }}>Step {index + 1}: {step.label}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    {isDone && stepDuration ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                        <Clock size={10} />
+                        {stepDuration}
+                      </span>
+                    ) : null}
+                    {isDone ? (
+                      <span className="badge badge-success"><CheckCircle size={12} /> Done</span>
+                    ) : isCurrent ? (
+                      <span className="badge badge-processing"><Loader size={12} className="spin" /> Running</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="inline-muted" style={{ marginTop: 2, fontSize: 'var(--font-size-xs)' }}>{step.description}</div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function MyDocuments() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [activeDocumentId, setActiveDocumentId] = useState(null)
   const [pageError, setPageError] = useState('')
   const [busyDocumentId, setBusyDocumentId] = useState(null)
+  const [pipelineOpen, setPipelineOpen] = useState(false)
   const {
     documents,
     latestJobsByDocumentId,
@@ -57,6 +190,10 @@ export default function MyDocuments() {
       setActiveDocumentId(documents[0].id)
     }
   }, [activeDocumentId, documents])
+
+  useEffect(() => {
+    setPipelineOpen(false)
+  }, [activeDocumentId])
 
   const filteredDocuments = useMemo(
     () => documents.filter((document) => (document.name || '').toLowerCase().includes(search.toLowerCase())),
@@ -245,6 +382,38 @@ export default function MyDocuments() {
                   <div className="detail-row">
                     <span className="inline-muted">Batch step</span>
                     <span>{selectedJob.currentStep || selectedJob.status}</span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: 'var(--spacing-lg)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--spacing-md)' }}>
+                <button
+                  type="button"
+                  onClick={() => setPipelineOpen((open) => !open)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    color: 'var(--color-text-primary)',
+                    fontWeight: 600,
+                    fontSize: 'var(--font-size-sm)',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Clock size={14} style={{ color: 'var(--color-primary)' }} />
+                    Pipeline History
+                  </span>
+                  {pipelineOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+
+                {pipelineOpen ? (
+                  <div style={{ marginTop: 'var(--spacing-md)' }}>
+                    <PipelineHistory document={selectedDocument} />
                   </div>
                 ) : null}
               </div>
