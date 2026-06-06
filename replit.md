@@ -123,3 +123,39 @@ Local, browser-based processing:
 - Build: `npm run build`
 - Public dir: `dist`
 - Deploy with the Publish button in Replit
+
+## GitHub Sync
+
+The project syncs to **Hari9704/SpringBatchbasedRAG** on GitHub using the `GITHUB_TOKEN` Replit secret.
+
+### How to push after each update
+
+Run the sync script from the Replit Shell:
+
+```bash
+./sync-to-github.sh
+```
+
+This will push the current branch (`agentic` by default) to `origin`. The script:
+1. Reads `GITHUB_TOKEN` from the environment (never written to disk)
+2. Injects it into the remote URL temporarily
+3. Pushes the current branch and sets the upstream tracking reference
+4. Restores the unauthenticated remote URL so the token stays out of git config
+
+### Force-push (when remote has diverged)
+
+If GitHub's branch has been independently force-pushed and a normal push is rejected:
+
+```bash
+./sync-to-github.sh --force
+```
+
+### Push a specific branch
+
+```bash
+BRANCH=master ./sync-to-github.sh
+```
+
+### Prerequisites
+- `GITHUB_TOKEN` must be present in Replit Secrets (confirmed active — HTTP 200 from GitHub API)
+- The token must have `repo` write scope on `Hari9704/SpringBatchbasedRAG`
