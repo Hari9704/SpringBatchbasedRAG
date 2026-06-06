@@ -126,25 +126,26 @@ Local, browser-based processing:
 
 ## GitHub Sync
 
-The project syncs to **Hari9704/SpringBatchbasedRAG** on GitHub using the `GITHUB_TOKEN` Replit secret.
+The project keeps **Hari9704/SpringBatchbasedRAG** in sync automatically using the `GITHUB_TOKEN` Replit secret.
 
-### How to push after each update
+### Automated sync (always-on)
 
-Run the sync script from the Replit Shell:
+The **"Sync to GitHub"** Replit workflow (`github-sync-watcher.sh`) runs in the background and polls every 60 seconds. Whenever it detects commits that are local but not yet on GitHub it calls `sync-to-github.sh` to push them — no manual action needed.
+
+Check its status in the Replit Workflows panel; logs show each push result.
+
+### Manual one-shot push
 
 ```bash
 ./sync-to-github.sh
 ```
 
-This will push the current branch (`agentic` by default) to `origin`. The script:
-1. Reads `GITHUB_TOKEN` from the environment (never written to disk)
-2. Injects it into the remote URL temporarily
-3. Pushes the current branch and sets the upstream tracking reference
-4. Restores the unauthenticated remote URL so the token stays out of git config
+The script:
+1. Creates a temporary `GIT_ASKPASS` helper that supplies `GITHUB_TOKEN` to git — token is never written to `.git/config` or any file
+2. The helper is removed by a `trap` on exit (success, error, or signal)
+3. Fetches origin, rebases if behind, then pushes
 
-### Force-push (when remote has diverged)
-
-If GitHub's branch has been independently force-pushed and a normal push is rejected:
+### Force-push (remote has diverged)
 
 ```bash
 ./sync-to-github.sh --force
@@ -157,5 +158,9 @@ BRANCH=master ./sync-to-github.sh
 ```
 
 ### Prerequisites
-- `GITHUB_TOKEN` must be present in Replit Secrets (confirmed active — HTTP 200 from GitHub API)
+- `GITHUB_TOKEN` must be present in Replit Secrets (confirmed: HTTP 200 from GitHub API, push verified)
 - The token must have `repo` write scope on `Hari9704/SpringBatchbasedRAG`
+
+### Files
+- `sync-to-github.sh` — single-run push script (safe auth, rebase, force-push support)
+- `github-sync-watcher.sh` — polling loop that drives the "Sync to GitHub" workflow
